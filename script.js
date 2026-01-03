@@ -201,6 +201,19 @@ function initializeApp() {
     // Inicializar tema
     document.body.setAttribute('data-theme', AppState.settings.theme);
     updateThemeIcon();
+    
+    // Verificar estado do preview de imagem
+    checkImagePreviewState();
+}
+
+function checkImagePreviewState() {
+    // Verificar se há uma imagem no preview que não deveria estar lá
+    if (DOM.imagePreview.src && DOM.imagePreview.src.includes('data:image')) {
+        // Se o container está escondido mas tem imagem, limpar
+        if (DOM.imagePreviewContainer.classList.contains('hidden')) {
+            removeImagePreview();
+        }
+    }
 }
 
 function setupEventListeners() {
@@ -372,9 +385,10 @@ async function sendMessage() {
     }
     
     const text = DOM.messageInput.value.trim();
-    const image = DOM.imagePreview.src;
+    const hasImage = DOM.imagePreview.src && DOM.imagePreview.src !== '' && 
+                     !DOM.imagePreviewContainer.classList.contains('hidden');
     
-    if (!text && !image) {
+    if (!text && !hasImage) {
         showNotification('Digite uma mensagem ou envie uma imagem', 'warning');
         return;
     }
@@ -383,7 +397,7 @@ async function sendMessage() {
     const userMessage = {
         id: Date.now(),
         text: text,
-        image: image || null,
+        image: hasImage ? DOM.imagePreview.src : null,
         sender: 'user',
         timestamp: new Date()
     };
@@ -395,20 +409,20 @@ async function sendMessage() {
     adjustTextareaHeight();
     document.querySelector('.char-count').textContent = '0/2000';
     
-    // Remover preview de imagem
-    if (image) {
+    // Remover preview de imagem se existir
+    if (hasImage) {
         removeImagePreview();
     }
     
-    // Obter resposta do Kako
-    await getKakoResponse(text, image);
+    // Obter resposta do Kako - PASSAR CORRETAMENTE SE TEM IMAGEM OU NÃO
+    await getKakoResponse(text, hasImage);
     
     // Salvar no histórico
     saveChatToStorage();
     updateHistoryList();
 }
 
-async function getKakoResponse(userText, userImage) {
+async function getKakoResponse(userText, hasImage) {
     showTypingIndicator();
     
     try {
@@ -416,10 +430,10 @@ async function getKakoResponse(userText, userImage) {
         
         if (AppState.apiConnected) {
             // Usar API real do Vercel
-            response = await callVercelApi(userText, userImage);
+            response = await callVercelApi(userText, hasImage);
         } else {
             // Usar modo offline
-            response = generateOfflineResponse(userText, userImage);
+            response = generateOfflineResponse(userText, hasImage);
             // Simular delay
             await new Promise(resolve => setTimeout(resolve, 1500));
         }
@@ -450,7 +464,7 @@ async function getKakoResponse(userText, userImage) {
         removeTypingIndicator();
         
         // Fallback para resposta offline
-        const fallbackResponse = generateOfflineResponse(userText, userImage);
+        const fallbackResponse = generateOfflineResponse(userText, hasImage);
         
         const kakoMessage = {
             id: Date.now() + 1,
@@ -473,7 +487,7 @@ function showTypingIndicator() {
     typingIndicator.id = 'typing-indicator';
     typingIndicator.innerHTML = `
         <div class="message-avatar">
-            <i class="fas fa-robot"></i>
+            <img src="kako-avatar.jpg" alt="Kako" onerror="this.onerror=null; this.src='https://ui-avatars.com/api/?name=Kako&background=f97316&color=fff'; this.alt='Kako'">
         </div>
         <div class="message-content">
             <div class="message-bubble">
@@ -499,10 +513,10 @@ function removeTypingIndicator() {
 }
 
 // Chamada para a API do Vercel
-async function callVercelApi(userText, userImage) {
+async function callVercelApi(userText, hasImage) {
     try {
         // Preparar mensagens
-        const messages = prepareApiMessages(userText, userImage);
+        const messages = prepareApiMessages(userText, hasImage);
         
         // URL da API no Vercel
         const apiUrl = window.location.hostname === 'localhost' 
@@ -569,7 +583,7 @@ async function testVercelApiConnection() {
     }
 }
 
-function prepareApiMessages(userText, userImage) {
+function prepareApiMessages(userText, hasImage) {
     const systemPrompt = createSystemPrompt();
     
     // Histórico recente (últimas 10 mensagens)
@@ -594,7 +608,7 @@ function prepareApiMessages(userText, userImage) {
     // Mensagem atual
     const currentMessage = {
         role: 'user',
-        content: userImage ? `[Imagem enviada] ${userText}` : userText
+        content: hasImage ? `[Imagem enviada] ${userText}` : userText
     };
     
     return [
@@ -651,7 +665,7 @@ Mas conta aí, o que tá rolando?"
 Responda sempre mantendo essa personalidade consistente!`;
 }
 
-function generateOfflineResponse(userText, userImage) {
+function generateOfflineResponse(userText, hasImage) {
     const catchphrase = KAKO_BRAIN.preferences.catchphrases[
         Math.floor(Math.random() * KAKO_BRAIN.preferences.catchphrases.length)
     ];
@@ -666,9 +680,14 @@ function generateOfflineResponse(userText, userImage) {
     
     let response = '';
     
-    if (userImage) {
+    if (hasImage) {
         response = `${catchphrase} Vi que você enviou uma imagem! 🔥 `;
         response += 'No modo offline, não posso analisar imagens, mas adoraria saber o que é!';
+        
+        // Adicionar texto se houver
+        if (userText) {
+            response += ` Sobre o que você escreveu: "${userText}" - isso é interessante!`;
+        }
     } else if (userText.toLowerCase().includes('aniversário') || userText.toLowerCase().includes('nascimento')) {
         response = `Nossa, você lembrou! 🎉 Nasci em ${KAKO_BRAIN.birthDate} e faltam ${daysUntilBirthday} dias pro meu próximo aniversário!`;
     } else if (userText.toLowerCase().includes('piada') || userText.toLowerCase().includes('humor')) {
@@ -763,7 +782,7 @@ function renderMessage(message) {
         // Usar imagem local para o Kako
         avatarHTML = `
             <div class="message-avatar">
-                <img src="kako-avatar.jpg" alt="Kako" onerror="this.src='https://ui-avatars.com/api/?name=Kako&background=f97316&color=fff'">
+                <img src="kako-avatar.jpg" alt="Kako" onerror="this.onerror=null; this.src='https://ui-avatars.com/api/?name=Kako&background=f97316&color=fff'; this.alt='Kako'">
             </div>
         `;
     }
@@ -874,11 +893,13 @@ function handleImageUpload(e) {
     
     if (!file.type.startsWith('image/')) {
         showNotification('Por favor, selecione apenas imagens', 'error');
+        DOM.imageInput.value = ''; // Limpar input
         return;
     }
     
     if (file.size > 5 * 1024 * 1024) {
         showNotification('A imagem é muito grande. Máximo: 5MB', 'error');
+        DOM.imageInput.value = ''; // Limpar input
         return;
     }
     
@@ -894,6 +915,9 @@ function removeImagePreview() {
     DOM.imagePreview.src = '';
     DOM.imagePreviewContainer.classList.add('hidden');
     DOM.imageInput.value = '';
+    
+    // Garantir que o estado está limpo
+    DOM.imagePreview.removeAttribute('src');
 }
 
 function viewImage(src) {
@@ -1254,7 +1278,36 @@ function updateThemeIcon() {
 }
 
 function toggleSidebar() {
-    document.querySelector('.sidebar').classList.toggle('active');
+    const sidebar = document.querySelector('.sidebar');
+    sidebar.classList.toggle('active');
+    
+    // Adicionar overlay no mobile
+    if (window.innerWidth <= 768) {
+        const overlay = document.querySelector('.sidebar-overlay');
+        if (sidebar.classList.contains('active')) {
+            if (!overlay) {
+                const newOverlay = document.createElement('div');
+                newOverlay.className = 'sidebar-overlay';
+                newOverlay.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0,0,0,0.5);
+                    z-index: 999;
+                    display: block;
+                `;
+                newOverlay.addEventListener('click', () => {
+                    sidebar.classList.remove('active');
+                    newOverlay.remove();
+                });
+                document.body.appendChild(newOverlay);
+            }
+        } else {
+            if (overlay) overlay.remove();
+        }
+    }
 }
 
 // Funções utilitárias
@@ -1422,6 +1475,16 @@ style.textContent = `
         top: 20px !important;
         right: 20px !important;
         z-index: 9999 !important;
+    }
+    
+    .sidebar-overlay {
+        display: none;
+    }
+    
+    @media (max-width: 768px) {
+        .sidebar-overlay {
+            display: block !important;
+        }
     }
 `;
 document.head.appendChild(style);
