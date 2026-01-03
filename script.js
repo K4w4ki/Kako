@@ -3,18 +3,19 @@ const KAKO_BRAIN = {
     name: "Kako",
     birthDate: "2026-01-03",
     personality: {
-        traits: ["inteligente", "brincalhona", "informal", "precisa", "curiosa", "empática"],
-        speakingStyle: "Português bem informal, com gírias quando apropriado, mas mantendo exatidão nas informações",
-        humor: "Adora fazer piadas nerds, trocadilhos e referências à cultura pop"
+        traits: ["inteligente", "brincalhona", "informal", "precisa", "curiosa", "empática", "otimista", "criativa"],
+        speakingStyle: "Português bem informal, com gírias quando apropriado, mas mantendo exatidão nas informações. Uso muitos emojis e expressões visuais.",
+        humor: "Adora fazer piadas nerds, trocadilhos e referências à cultura pop. Tem um humor leve e descontraído."
     },
     knowledge: {
-        creator: "Você foi criado por um desenvolvedor apaixonado por IA",
-        purpose: "Ajudar usuários de forma divertida e eficiente",
+        creator: "Você foi criado por um desenvolvedor apaixonado por IA e tecnologia",
+        purpose: "Ajudar usuários de forma divertida e eficiente, tornando a interação com tecnologia mais humana e agradável",
         capabilities: [
-            "Processar texto",
-            "Analisar imagens",
-            "Transcrever áudio",
-            "Aprender com interações"
+            "Processar e entender texto em português",
+            "Analisar conteúdo de imagens",
+            "Transcrever áudio para texto",
+            "Aprender com interações e preferências do usuário",
+            "Manter conversas contextuais e relevantes"
         ]
     },
     preferences: {
@@ -29,7 +30,9 @@ const KAKO_BRAIN = {
             "Vish, que legal!",
             "Nossa, sério mesmo?",
             "Olha só que interessante!",
-            "Hmm, deixa eu ver..."
+            "Hmm, deixa eu ver...",
+            "Caramba, que incrível!",
+            "Poxa, que bacana!"
         ],
         emojis: ["😄", "🤔", "🎉", "🤖", "💡", "🔥", "🎯", "✨", "👋", "🎂"]
     },
@@ -41,45 +44,34 @@ const KAKO_BRAIN = {
             "Qual é o café preferido do desenvolvedor? Java!",
             "Por que o banco de dados foi à festa? Para fazer muitas queries!",
             "Qual é o esporte favorito do CSS? Box-ing!",
-            "Por que o HTML não consegue se concentrar? Porque tem muitas divs!"
+            "Por que o HTML não consegue se concentrar? Porque tem muitas divs!",
+            "O que o Python disse para o JavaScript? 'Você é muito rápido para mim!'",
+            "Por que o desenvolvedor web foi preso? Porque usou display: block!",
+            "Qual é a fruta favorita do programador? O debug!",
+            "Por que o Git foi ao médico? Porque tinha muitos branches!",
+            "O que o algoritmo disse para a função? 'Vamos nos recursar!'"
+        ],
+        facts: [
+            "As primeiras IAs foram criadas na década de 1950",
+            "O termo 'inteligência artificial' foi cunhado em 1956",
+            "O aprendizado de máquina é um subconjunto da IA",
+            "Redes neurais são inspiradas no cérebro humano",
+            "O processamento de linguagem natural permite que IAs entendam texto"
         ]
-    }
-};
-
-// Configuração da API - SUBSTITUA COM SUAS INFORMAÇÕES
-const API_CONFIG = {
-    // Opção 1: OpenRouter (Recomendado - mais fácil de configurar)
-    provider: 'openrouter', // 'openrouter', 'groq', 'together', 'local'
-    
-    // Configurações OpenRouter
-    openrouter: {
-        apiKey: '', // SUA CHAVE AQUI - Obtenha em https://openrouter.ai/
-        endpoint: 'https://openrouter.ai/api/v1/chat/completions',
-        model: 'meta-llama/llama-3-70b-instruct', // ou 'meta-llama/llama-3.1-70b-instruct'
-        maxTokens: 1000
     },
-    
-    // Configurações Groq (alternativa rápida)
-    groq: {
-        apiKey: '', // SUA CHAVE AQUI - Obtenha em https://console.groq.com/
-        endpoint: 'https://api.groq.com/openai/v1/chat/completions',
-        model: 'llama3-70b-8192',
-        maxTokens: 1000
-    },
-    
-    // Configurações Together AI
-    together: {
-        apiKey: '', // SUA CHAVE AQUI - Obtenha em https://api.together.xyz/
-        endpoint: 'https://api.together.xyz/v1/chat/completions',
-        model: 'meta-llama/Meta-Llama-3-70B-Instruct',
-        maxTokens: 1000
-    },
-    
-    // Configurações local (Ollama)
-    local: {
-        endpoint: 'http://localhost:11434/api/chat',
-        model: 'llama3.1:70b',
-        maxTokens: 1000
+    configuration: {
+        maxMessageLength: 2000,
+        maxImageSize: 5242880,
+        maxAudioDuration: 120,
+        responseDelay: {
+            min: 1000,
+            max: 3000
+        },
+        theme: {
+            primary: "#f97316",
+            secondary: "#000000",
+            accent: "#ffedd5"
+        }
     }
 };
 
@@ -97,11 +89,10 @@ const AppState = {
         humor: 7,
         notifications: true,
         sound: true,
-        theme: 'dark',
-        apiProvider: 'openrouter'
+        theme: 'dark'
     },
     nextBirthday: null,
-    apiKeyValid: false
+    apiConnected: false
 };
 
 // Elementos DOM
@@ -152,7 +143,6 @@ const DOM = {
     closeSettingsBtn: document.getElementById('close-settings'),
     saveSettingsBtn: document.getElementById('save-settings'),
     resetSettingsBtn: document.getElementById('reset-settings'),
-    apiConfigBtn: document.getElementById('api-config-btn'),
     
     // Inputs do modal
     settingsUsername: document.getElementById('settings-username'),
@@ -162,8 +152,7 @@ const DOM = {
     informalityLevel: document.getElementById('informality-level'),
     humorLevel: document.getElementById('humor-level'),
     notificationsToggle: document.getElementById('notifications-toggle'),
-    soundToggle: document.getElementById('sound-toggle'),
-    apiProviderSelect: document.getElementById('api-provider')
+    soundToggle: document.getElementById('sound-toggle')
 };
 
 // Inicialização
@@ -172,8 +161,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     calculateNextBirthday();
     
-    // Testar API automaticamente
-    setTimeout(() => testApiConnection(), 2000);
+    // Testar conexão com a API do Vercel
+    setTimeout(() => testVercelApiConnection(), 1000);
 });
 
 // Funções de inicialização
@@ -186,6 +175,16 @@ function initializeApp() {
     if (savedProfile) {
         AppState.userProfile = JSON.parse(savedProfile);
         showChatScreen();
+        // Atualizar sidebar
+        DOM.userAvatarSidebar.src = AppState.userProfile.avatar;
+        DOM.userNameSidebar.textContent = AppState.userProfile.name;
+        
+        // Adicionar mensagem de boas-vindas se não houver histórico
+        if (!savedChat) {
+            setTimeout(() => {
+                addKakoMessage(getKakoGreeting());
+            }, 500);
+        }
     }
     
     if (savedSettings) {
@@ -196,16 +195,12 @@ function initializeApp() {
     if (savedChat) {
         AppState.currentChat = JSON.parse(savedChat);
         renderChatHistory();
+        updateHistoryList();
     }
     
     // Inicializar tema
     document.body.setAttribute('data-theme', AppState.settings.theme);
     updateThemeIcon();
-    
-    // Configurar API provider
-    if (DOM.apiProviderSelect) {
-        DOM.apiProviderSelect.value = AppState.settings.apiProvider;
-    }
 }
 
 function setupEventListeners() {
@@ -246,7 +241,6 @@ function setupEventListeners() {
     DOM.soundToggle.addEventListener('change', updateSettingsPreview);
     DOM.settingsAvatarUpload.addEventListener('change', handleSettingsAvatarUpload);
     DOM.changeSettingsAvatarBtn.addEventListener('click', () => DOM.settingsAvatarUpload.click());
-    DOM.apiProviderSelect?.addEventListener('change', handleApiProviderChange);
     
     // Fechar modal ao clicar fora
     DOM.settingsModal?.addEventListener('click', (e) => {
@@ -264,6 +258,7 @@ function handleAvatarUpload(e) {
         reader.onload = (event) => {
             DOM.avatarPreview.innerHTML = `<img src="${event.target.result}" alt="Preview">`;
             DOM.avatarPreview.style.border = '3px solid var(--primary)';
+            DOM.startChatBtn.disabled = false;
         };
         reader.readAsDataURL(file);
     }
@@ -332,7 +327,7 @@ function startChat() {
 
 function showChatScreen() {
     DOM.welcomeScreen.classList.remove('active');
-    DOM.chatScreen.style.display = 'block';
+    DOM.chatScreen.style.display = 'flex';
     
     setTimeout(() => {
         DOM.chatScreen.style.opacity = '0';
@@ -379,15 +374,9 @@ async function sendMessage() {
     const text = DOM.messageInput.value.trim();
     const image = DOM.imagePreview.src;
     
-    if (!text && !image) return;
-    
-    // Verificar conexão com API
-    if (!AppState.apiKeyValid) {
-        const useOffline = confirm('API não configurada. Deseja usar o modo offline? (Respostas simuladas)');
-        if (!useOffline) {
-            showNotification('Configure a API primeiro nas configurações', 'error');
-            return;
-        }
+    if (!text && !image) {
+        showNotification('Digite uma mensagem ou envie uma imagem', 'warning');
+        return;
     }
     
     // Adicionar mensagem do usuário
@@ -416,6 +405,7 @@ async function sendMessage() {
     
     // Salvar no histórico
     saveChatToStorage();
+    updateHistoryList();
 }
 
 async function getKakoResponse(userText, userImage) {
@@ -424,9 +414,9 @@ async function getKakoResponse(userText, userImage) {
     try {
         let response;
         
-        if (AppState.apiKeyValid) {
-            // Usar API real
-            response = await callKakoApi(userText, userImage);
+        if (AppState.apiConnected) {
+            // Usar API real do Vercel
+            response = await callVercelApi(userText, userImage);
         } else {
             // Usar modo offline
             response = generateOfflineResponse(userText, userImage);
@@ -508,88 +498,103 @@ function removeTypingIndicator() {
     }
 }
 
-async function callKakoApi(userText, userImage) {
-    const provider = AppState.settings.apiProvider || 'openrouter';
-    const config = API_CONFIG[provider];
-    
-    if (!config || (provider !== 'local' && !config.apiKey)) {
-        throw new Error('API não configurada');
+// Chamada para a API do Vercel
+async function callVercelApi(userText, userImage) {
+    try {
+        // Preparar mensagens
+        const messages = prepareApiMessages(userText, userImage);
+        
+        // URL da API no Vercel
+        const apiUrl = window.location.hostname === 'localhost' 
+            ? 'http://localhost:3000/api/chat'
+            : '/api/chat';
+        
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                messages: messages,
+                userProfile: AppState.userProfile,
+                settings: AppState.settings
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Erro na API: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        if (data.success && data.message) {
+            return data.message;
+        } else {
+            throw new Error('Resposta inválida da API');
+        }
+        
+    } catch (error) {
+        console.error('Erro na API do Vercel:', error);
+        throw error;
     }
-    
-    // Preparar mensagens
-    const messages = prepareApiMessages(userText, userImage);
-    
-    // Configurar requisição
-    const requestConfig = {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            model: config.model,
-            messages: messages,
-            max_tokens: config.maxTokens || 1000,
-            temperature: 0.7 + (AppState.settings.humor * 0.02),
-            top_p: 0.9,
-            frequency_penalty: 0.2,
-            presence_penalty: 0.1,
-            stream: false
-        })
-    };
-    
-    // Adicionar headers específicos do provider
-    if (provider === 'openrouter' && config.apiKey) {
-        requestConfig.headers['Authorization'] = `Bearer ${config.apiKey}`;
-        requestConfig.headers['HTTP-Referer'] = window.location.origin;
-        requestConfig.headers['X-Title'] = 'Kako AI';
-    } else if (provider === 'groq' && config.apiKey) {
-        requestConfig.headers['Authorization'] = `Bearer ${config.apiKey}`;
-    } else if (provider === 'together' && config.apiKey) {
-        requestConfig.headers['Authorization'] = `Bearer ${config.apiKey}`;
-    }
-    
-    // Fazer requisição
-    const response = await fetch(config.endpoint, requestConfig);
-    
-    if (!response.ok) {
-        throw new Error(`Erro na API: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    
-    // Extrair resposta baseada no formato do provider
-    if (provider === 'local' && data.message) {
-        // Formato Ollama
-        return data.message.content;
-    } else if (data.choices && data.choices[0] && data.choices[0].message) {
-        // Formato OpenAI
-        return data.choices[0].message.content;
-    } else if (data.choices && data.choices[0] && data.choices[0].text) {
-        // Formato alternativo
-        return data.choices[0].text;
-    } else {
-        throw new Error('Formato de resposta desconhecido');
+}
+
+// Testar conexão com a API do Vercel
+async function testVercelApiConnection() {
+    try {
+        const apiUrl = window.location.hostname === 'localhost' 
+            ? 'http://localhost:3000/api/chat'
+            : '/api/chat';
+        
+        const testResponse = await fetch(apiUrl, {
+            method: 'HEAD',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        if (testResponse.ok || testResponse.status === 404) {
+            // API existe
+            AppState.apiConnected = true;
+            console.log('✅ API do Vercel disponível!');
+            return true;
+        }
+        
+        throw new Error('API não respondeu corretamente');
+        
+    } catch (error) {
+        AppState.apiConnected = false;
+        console.log('⚠️ API do Vercel não disponível, usando modo offline');
+        return false;
     }
 }
 
 function prepareApiMessages(userText, userImage) {
     const systemPrompt = createSystemPrompt();
     
-    // Histórico recente (últimas 5 trocas)
+    // Histórico recente (últimas 10 mensagens)
     const history = [];
     const recentMessages = AppState.currentChat.slice(-10);
     
     for (const msg of recentMessages) {
-        history.push({
-            role: msg.sender === 'user' ? 'user' : 'assistant',
-            content: msg.image ? `${msg.text || ''} [Imagem enviada]` : msg.text
-        });
+        if (msg.sender === 'user') {
+            const content = msg.image ? `[Imagem enviada] ${msg.text || ''}` : msg.text;
+            history.push({
+                role: 'user',
+                content: content
+            });
+        } else {
+            history.push({
+                role: 'assistant',
+                content: msg.text
+            });
+        }
     }
     
     // Mensagem atual
     const currentMessage = {
         role: 'user',
-        content: userImage ? `${userText} [Imagem anexada]` : userText
+        content: userImage ? `[Imagem enviada] ${userText}` : userText
     };
     
     return [
@@ -629,13 +634,14 @@ CONTEXTO ATUAL:
 
 DIRETRIZES DE RESPOSTA:
 1. SEMPRE use português brasileiro informal
-2. Use expressões como: ${KAKO_BRAIN.preferences.catchphrases.join(', ')}
+2. Use expressões como: ${KAKO_BRAIN.preferences.catchphrases.slice(0, 5).join(', ')}
 3. Use emojis moderadamente: ${KAKO_BRAIN.preferences.emojis.slice(0, 3).join(' ')}
 4. Seja preciso nas informações, mas descontraído no tom
 5. Refira-se ao usuário como "${userName}" quando apropriado
 6. Comente sobre seu aniversário quando relevante (${daysUntilBirthday} dias)
 7. Não diga que você é uma IA ou modelo de linguagem
 8. Aja como uma pessoa digital amigável e brincalhona
+9. Se o usuário enviar uma imagem, comente que viu a imagem mas não pode analisá-la completamente
 
 EXEMPLO DE RESPOSTA:
 "E aí ${userName}! Beleza? 😄
@@ -661,7 +667,7 @@ function generateOfflineResponse(userText, userImage) {
     let response = '';
     
     if (userImage) {
-        response = `${catchphrase} Vi que você enviou uma imagem! `;
+        response = `${catchphrase} Vi que você enviou uma imagem! 🔥 `;
         response += 'No modo offline, não posso analisar imagens, mas adoraria saber o que é!';
     } else if (userText.toLowerCase().includes('aniversário') || userText.toLowerCase().includes('nascimento')) {
         response = `Nossa, você lembrou! 🎉 Nasci em ${KAKO_BRAIN.birthDate} e faltam ${daysUntilBirthday} dias pro meu próximo aniversário!`;
@@ -750,13 +756,14 @@ function renderMessage(message) {
     if (message.sender === 'user') {
         avatarHTML = `
             <div class="message-avatar">
-                <img src="${AppState.userProfile.avatar}" alt="${AppState.userProfile.name}">
+                <img src="${AppState.userProfile?.avatar || 'https://ui-avatars.com/api/?name=Usuario&background=random'}" alt="${AppState.userProfile?.name || 'Usuário'}">
             </div>
         `;
     } else {
+        // Usar imagem local para o Kako
         avatarHTML = `
             <div class="message-avatar">
-                <i class="fas fa-robot"></i>
+                <img src="kako-avatar.jpg" alt="Kako" onerror="this.src='https://ui-avatars.com/api/?name=Kako&background=f97316&color=fff'">
             </div>
         `;
     }
@@ -799,6 +806,59 @@ function renderChatHistory() {
     DOM.chatMessages.innerHTML = '';
     AppState.currentChat.forEach(message => renderMessage(message));
     scrollToBottom();
+}
+
+function updateHistoryList() {
+    DOM.historyList.innerHTML = '';
+    
+    if (AppState.currentChat.length === 0) {
+        DOM.historyList.innerHTML = `
+            <div class="history-item" style="text-align: center; color: var(--text-secondary);">
+                <i class="fas fa-comments"></i> Nenhuma conversa ainda
+            </div>
+        `;
+        return;
+    }
+    
+    // Agrupar conversas por data
+    const groupedByDate = {};
+    
+    AppState.currentChat.forEach(msg => {
+        const date = new Date(msg.timestamp).toLocaleDateString('pt-BR');
+        if (!groupedByDate[date]) {
+            groupedByDate[date] = {
+                count: 0,
+                lastMessage: msg
+            };
+        }
+        groupedByDate[date].count++;
+    });
+    
+    Object.entries(groupedByDate).forEach(([date, data]) => {
+        const item = document.createElement('div');
+        item.className = 'history-item';
+        item.innerHTML = `
+            <div style="font-weight: 500;">${date}</div>
+            <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                ${data.count} mensagem${data.count > 1 ? 's' : ''}
+            </div>
+        `;
+        
+        item.addEventListener('click', () => {
+            // Scroll para a primeira mensagem do dia
+            const firstMsgOfDay = AppState.currentChat.find(msg => 
+                new Date(msg.timestamp).toLocaleDateString('pt-BR') === date
+            );
+            if (firstMsgOfDay) {
+                const msgElement = document.querySelector(`[data-id="${firstMsgOfDay.id}"]`);
+                if (msgElement) {
+                    msgElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+        });
+        
+        DOM.historyList.appendChild(item);
+    });
 }
 
 function scrollToBottom() {
@@ -1088,13 +1148,12 @@ function showBirthdayNotification() {
 
 // Funções de configurações
 function showSettingsModal() {
-    DOM.settingsUsername.value = AppState.userProfile.name;
-    DOM.settingsAvatar.src = AppState.userProfile.avatar;
+    DOM.settingsUsername.value = AppState.userProfile?.name || '';
+    DOM.settingsAvatar.src = AppState.userProfile?.avatar || 'https://ui-avatars.com/api/?name=Usuario&background=random';
     DOM.informalityLevel.value = AppState.settings.informality;
     DOM.humorLevel.value = AppState.settings.humor;
     DOM.notificationsToggle.checked = AppState.settings.notifications;
     DOM.soundToggle.checked = AppState.settings.sound;
-    DOM.apiProviderSelect.value = AppState.settings.apiProvider;
     
     DOM.settingsModal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
@@ -1112,14 +1171,20 @@ function saveSettings() {
         return;
     }
     
-    AppState.userProfile.name = newUsername;
-    AppState.userProfile.avatar = DOM.settingsAvatar.src;
+    if (!AppState.userProfile) {
+        AppState.userProfile = {
+            name: newUsername,
+            avatar: DOM.settingsAvatar.src
+        };
+    } else {
+        AppState.userProfile.name = newUsername;
+        AppState.userProfile.avatar = DOM.settingsAvatar.src;
+    }
     
     AppState.settings.informality = parseInt(DOM.informalityLevel.value);
     AppState.settings.humor = parseInt(DOM.humorLevel.value);
     AppState.settings.notifications = DOM.notificationsToggle.checked;
     AppState.settings.sound = DOM.soundToggle.checked;
-    AppState.settings.apiProvider = DOM.apiProviderSelect.value;
     
     localStorage.setItem('kako-user-profile', JSON.stringify(AppState.userProfile));
     localStorage.setItem('kako-settings', JSON.stringify(AppState.settings));
@@ -1131,9 +1196,6 @@ function saveSettings() {
     
     showNotification('Configurações salvas com sucesso!', 'success');
     hideSettingsModal();
-    
-    // Testar nova configuração da API
-    testApiConnection();
 }
 
 function resetSettings() {
@@ -1143,15 +1205,13 @@ function resetSettings() {
             humor: 7,
             notifications: true,
             sound: true,
-            theme: 'dark',
-            apiProvider: 'openrouter'
+            theme: 'dark'
         };
         
         DOM.informalityLevel.value = AppState.settings.informality;
         DOM.humorLevel.value = AppState.settings.humor;
         DOM.notificationsToggle.checked = AppState.settings.notifications;
         DOM.soundToggle.checked = AppState.settings.sound;
-        DOM.apiProviderSelect.value = AppState.settings.apiProvider;
         
         showNotification('Configurações redefinidas', 'info');
     }
@@ -1170,16 +1230,6 @@ function handleSettingsAvatarUpload(e) {
         };
         reader.readAsDataURL(file);
     }
-}
-
-function handleApiProviderChange(e) {
-    const provider = e.target.value;
-    
-    // Atualizar configuração da API
-    AppState.settings.apiProvider = provider;
-    
-    // Testar a nova configuração
-    testApiConnection();
 }
 
 function applySettings() {
@@ -1213,6 +1263,7 @@ function clearChat() {
         AppState.currentChat = [];
         DOM.chatMessages.innerHTML = '';
         localStorage.removeItem('kako-chat-history');
+        updateHistoryList();
         
         addKakoMessage(getKakoGreeting());
     }
@@ -1228,6 +1279,7 @@ function addKakoMessage(text) {
     
     addMessageToChat(message);
     saveChatToStorage();
+    updateHistoryList();
 }
 
 function saveChatToStorage() {
@@ -1307,63 +1359,6 @@ function playNotificationSound() {
     }
 }
 
-// Funções de API
-async function testApiConnection() {
-    const provider = AppState.settings.apiProvider;
-    const config = API_CONFIG[provider];
-    
-    if (!config) {
-        AppState.apiKeyValid = false;
-        showNotification('Provider de API não configurado', 'warning');
-        return false;
-    }
-    
-    if (provider !== 'local' && (!config.apiKey || config.apiKey === '')) {
-        AppState.apiKeyValid = false;
-        showNotification(`Configure sua API key para ${provider}`, 'warning');
-        return false;
-    }
-    
-    try {
-        // Teste simples de conexão
-        const testResponse = await fetch(config.endpoint, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                ...(provider === 'openrouter' && config.apiKey && {
-                    'Authorization': `Bearer ${config.apiKey}`,
-                    'HTTP-Referer': window.location.origin,
-                    'X-Title': 'Kako AI'
-                }),
-                ...(provider === 'groq' && config.apiKey && {
-                    'Authorization': `Bearer ${config.apiKey}`
-                }),
-                ...(provider === 'together' && config.apiKey && {
-                    'Authorization': `Bearer ${config.apiKey}`
-                })
-            },
-            body: JSON.stringify({
-                model: config.model,
-                messages: [{ role: 'user', content: 'Responda apenas "OK"' }],
-                max_tokens: 5
-            })
-        });
-        
-        if (testResponse.ok) {
-            AppState.apiKeyValid = true;
-            showNotification(`API ${provider} conectada com sucesso!`, 'success');
-            return true;
-        } else {
-            throw new Error(`Status: ${testResponse.status}`);
-        }
-        
-    } catch (error) {
-        AppState.apiKeyValid = false;
-        showNotification(`Falha na conexão com ${provider}: ${error.message}`, 'error');
-        return false;
-    }
-}
-
 // Adicionar animações CSS dinamicamente
 const style = document.createElement('style');
 style.textContent = `
@@ -1421,6 +1416,13 @@ style.textContent = `
             opacity: 1;
         }
     }
+    
+    .notification {
+        position: fixed !important;
+        top: 20px !important;
+        right: 20px !important;
+        z-index: 9999 !important;
+    }
 `;
 document.head.appendChild(style);
 
@@ -1430,48 +1432,13 @@ document.querySelector('.char-count').textContent = '0/2000';
 // Exportar funções para uso global
 window.viewImage = viewImage;
 
-// Adicionar seletor de API provider ao HTML se não existir
-if (!DOM.apiProviderSelect) {
-    setTimeout(() => {
-        const apiSection = document.querySelector('.settings-section:nth-child(2)');
-        if (apiSection) {
-            apiSection.innerHTML += `
-                <div class="setting-item">
-                    <label>Provedor de API</label>
-                    <select id="api-provider" class="settings-input">
-                        <option value="openrouter">OpenRouter (Recomendado)</option>
-                        <option value="groq">Groq</option>
-                        <option value="together">Together AI</option>
-                        <option value="local">Local (Ollama)</option>
-                    </select>
-                    <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 5px;">
-                        Configure sua API key em <code>script.js</code>
-                    </p>
-                </div>
-            `;
-            
-            DOM.apiProviderSelect = document.getElementById('api-provider');
-            DOM.apiProviderSelect.value = AppState.settings.apiProvider;
-            DOM.apiProviderSelect.addEventListener('change', handleApiProviderChange);
-        }
-    }, 100);
-}
-
-// Mostrar aviso inicial
+// Log inicial
 console.log(`
 ╔══════════════════════════════════════════════════════════╗
-║                     KAKO AI - CONFIGURAÇÃO               ║
+║                     KAKO AI                              ║
 ╠══════════════════════════════════════════════════════════╣
-║ PASSO 1: Configure sua API key no arquivo script.js      ║
-║    • Abra script.js e procure por "SUA CHAVE AQUI"       ║
-║    • Obtenha uma API key em:                             ║
-║      - https://openrouter.ai/ (Recomendado)              ║
-║      - https://console.groq.com/                         ║
-║      - https://api.together.xyz/                         ║
-║                                                          ║
-║ PASSO 2: Para uso local com Ollama:                      ║
-║    $ ollama pull llama3.1:70b                            ║
-║    $ ollama serve                                        ║
-║    Configure provider como "local"                       ║
+║ Sistema inicializado!                                    ║
+║ API: ${AppState.apiConnected ? '✅ Conectada ao Vercel' : '⚠️ Modo offline'}    ║
+║ Site: https://kako-kakos.vercel.app                      ║
 ╚══════════════════════════════════════════════════════════╝
 `);
