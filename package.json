@@ -1,0 +1,28 @@
+{
+  "name": "kako-chat",
+  "version": "1.0.0",
+  "description": "Chatbot Kako com LLaMA 3.2 - Assistente IA brincalhão",
+  "main": "index.html",
+  "scripts": {
+    "dev": "npx serve .",
+    "start": "node api/chat.js"
+  },
+  "keywords": [
+    "chatbot",
+    "ai",
+    "llama",
+    "assistant",
+    "vercel"
+  ],
+  "author": "Kako Team",
+  "license": "MIT",
+  "dependencies": {
+    "node-fetch": "^3.3.1"
+  },
+  "devDependencies": {
+    "@vercel/node": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.x"
+  }
+}
