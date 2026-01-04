@@ -17,7 +17,13 @@ const appState = {
     currentImage: null,
     isProcessing: false,
     isTyping: false,
-    savedChats: JSON.parse(localStorage.getItem("kako_savedChats")) || []
+    savedChats: JSON.parse(localStorage.getItem("kako_savedChats")) || [],
+    settings: JSON.parse(localStorage.getItem("kako_settings")) || {
+        typingSpeed: 50,
+        soundEnabled: true,
+        darkMode: true,
+        autoScroll: true
+    }
 };
 
 // Inicialização
@@ -37,7 +43,7 @@ function checkUserProfile() {
     }
 }
 
-// Mostra modal de configuração inicial
+// Mostra modal de configuração inicial (MANTIDO IGUAL)
 function showSetupModal() {
     const modalHTML = `
         <div id="setupModal" class="setup-modal">
@@ -193,8 +199,22 @@ function initializeChatInterface() {
                     </button>
                 </div>
                 
-                <div class="chat-history" id="chatHistory">
-                    <!-- Histórico será carregado aqui -->
+                <!-- Histórico Aprimorado -->
+                <div class="history-section">
+                    <div class="section-header">
+                        <h3><i class="fas fa-history"></i> Histórico</h3>
+                        <div class="history-controls">
+                            <button id="clearHistoryBtn" class="btn-icon small" title="Limpar histórico">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            <button id="toggleHistoryBtn" class="btn-icon small">
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="chat-history" id="chatHistory">
+                        <!-- Histórico será carregado aqui -->
+                    </div>
                 </div>
                 
                 <div class="user-profile">
@@ -207,9 +227,11 @@ function initializeChatInterface() {
                         </div>
                         <div class="user-details">
                             <span class="user-name">${appState.userName}</span>
-                            <button id="editProfileBtn" class="btn-icon">
-                                <i class="fas fa-cog"></i>
-                            </button>
+                            <div class="profile-actions">
+                                <button id="settingsBtn" class="btn-icon" title="Configurações">
+                                    <i class="fas fa-cog"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -217,20 +239,24 @@ function initializeChatInterface() {
             
             <!-- Área principal -->
             <div class="main-content">
-                <!-- Cabeçalho -->
+                <!-- Cabeçalho Aprimorado -->
                 <div class="chat-header">
                     <div class="ai-info">
                         <div class="ai-avatar">
                             <img src="image/kako-profile.png" alt="Kako">
+                            <div class="online-dot"></div>
                         </div>
-                        <div>
-                            <h3>Kako</h3>
+                        <div class="ai-details">
+                            <h3>Kako <span class="ai-badge">IA</span></h3>
                             <p class="ai-status">Online • Inteligente e brincalhão</p>
                         </div>
                     </div>
                     
                     <div class="header-actions">
-                        <button id="clearChatBtn" class="btn-icon" title="Limpar conversa">
+                        <button id="exportChatBtn" class="btn-icon" title="Exportar conversa">
+                            <i class="fas fa-download"></i>
+                        </button>
+                        <button id="clearChatBtn" class="btn-icon danger" title="Limpar conversa">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
@@ -246,7 +272,20 @@ function initializeChatInterface() {
                             <h1>E aí, ${appState.userName}! 👋</h1>
                             <p>Eu sou o <strong>Kako</strong>, seu assistente de IA inteligente e brincalhão!</p>
                             <p>Estou aqui pra te ajudar com o que precisar. Pode perguntar qualquer coisa!</p>
-                            <p class="hint"><i class="fas fa-image"></i> Dica: Você pode me enviar imagens e eu leio o texto delas!</p>
+                            <div class="welcome-features">
+                                <div class="feature">
+                                    <i class="fas fa-image"></i>
+                                    <span>Análise de imagens</span>
+                                </div>
+                                <div class="feature">
+                                    <i class="fas fa-bolt"></i>
+                                    <span>Respostas rápidas</span>
+                                </div>
+                                <div class="feature">
+                                    <i class="fas fa-brain"></i>
+                                    <span>Aprendizado contínuo</span>
+                                </div>
+                            </div>
                             
                             <div class="quick-questions">
                                 <h3><i class="fas fa-bolt"></i> Perguntas rápidas:</h3>
@@ -269,7 +308,7 @@ function initializeChatInterface() {
                     </div>
                 </div>
                 
-                <!-- Input area -->
+                <!-- Input area melhorada -->
                 <div class="input-container">
                     <div class="input-wrapper">
                         <div class="input-actions">
@@ -282,9 +321,13 @@ function initializeChatInterface() {
                         <div class="text-input-area">
                             <textarea 
                                 id="messageInput" 
-                                placeholder="Mensagem para Kako... (Shift+Enter para nova linha)"
+                                placeholder="Digite sua mensagem aqui... (Shift+Enter para nova linha)"
                                 rows="1"
+                                maxlength="2000"
                             ></textarea>
+                            <div class="input-hint">
+                                <span id="charCount">0/2000</span>
+                            </div>
                             
                             <div class="image-preview" id="imagePreview">
                                 <!-- Preview de imagem -->
@@ -297,20 +340,76 @@ function initializeChatInterface() {
                     </div>
                     
                     <div class="input-footer">
-                        <p><i class="fas fa-lightbulb"></i> Kako consegue analisar texto em imagens. Envie prints, documentos, etc.</p>
+                        <div class="typing-indicator" id="typingIndicator" style="display: none;">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                            <span>Kako está digitando...</span>
+                        </div>
+                        <p><i class="fas fa-lightbulb"></i> Kako consegue analisar texto em imagens</p>
                     </div>
                 </div>
             </div>
             
-            <!-- Loading overlay -->
-            <div class="loading-overlay" id="loadingOverlay">
-                <div class="loading-content">
-                    <div class="typing-indicator">
-                        <span></span>
-                        <span></span>
-                        <span></span>
+            <!-- Modal de Configurações -->
+            <div id="settingsModal" class="modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3><i class="fas fa-cog"></i> Configurações</h3>
+                        <button class="btn-icon close-modal">
+                            <i class="fas fa-times"></i>
+                        </button>
                     </div>
-                    <p>Kako está digitando...</p>
+                    <div class="modal-body">
+                        <div class="settings-section">
+                            <h4>Interface</h4>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="darkModeToggle" ${appState.settings.darkMode ? 'checked' : ''}>
+                                    <span>Modo Escuro</span>
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="soundToggle" ${appState.settings.soundEnabled ? 'checked' : ''}>
+                                    <span>Sons</span>
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="autoScrollToggle" ${appState.settings.autoScroll ? 'checked' : ''}>
+                                    <span>Rolagem automática</span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="settings-section">
+                            <h4>Velocidade de Digitação</h4>
+                            <div class="setting-item">
+                                <input type="range" id="typingSpeed" min="20" max="150" value="${appState.settings.typingSpeed}">
+                                <span id="speedValue">${appState.settings.typingSpeed} cps</span>
+                            </div>
+                        </div>
+                        
+                        <div class="settings-section">
+                            <h4>Conta</h4>
+                            <div class="setting-item">
+                                <button id="editProfileSettingsBtn" class="btn-secondary">
+                                    <i class="fas fa-user-edit"></i> Editar Perfil
+                                </button>
+                            </div>
+                            <div class="setting-item">
+                                <button id="clearAllDataBtn" class="btn-secondary danger">
+                                    <i class="fas fa-trash-alt"></i> Limpar Todos os Dados
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn-primary save-settings">
+                            <i class="fas fa-save"></i> Salvar Configurações
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -327,6 +426,9 @@ function initializeChatInterface() {
     } else {
         updateChatHistorySidebar();
     }
+    
+    // Atualiza contador de caracteres
+    updateCharCount();
 }
 
 function initializeChatEvents() {
@@ -336,7 +438,30 @@ function initializeChatEvents() {
     const imageUpload = document.getElementById('imageUpload');
     const newChatBtn = document.getElementById('newChatBtn');
     const clearChatBtn = document.getElementById('clearChatBtn');
-    const editProfileBtn = document.getElementById('editProfileBtn');
+    const settingsBtn = document.getElementById('settingsBtn');
+    const charCount = document.getElementById('charCount');
+    const typingIndicator = document.getElementById('typingIndicator');
+    const typingSpeedSlider = document.getElementById('typingSpeed');
+    const speedValue = document.getElementById('speedValue');
+    
+    // Contador de caracteres
+    messageInput.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        updateCharCount();
+    });
+    
+    function updateCharCount() {
+        const count = messageInput.value.length;
+        charCount.textContent = `${count}/2000`;
+        if (count > 1800) {
+            charCount.style.color = 'var(--error)';
+        } else if (count > 1500) {
+            charCount.style.color = 'var(--warning)';
+        } else {
+            charCount.style.color = 'var(--text-secondary)';
+        }
+    }
     
     // Envio de mensagem
     sendMessageBtn.addEventListener('click', sendMessage);
@@ -346,11 +471,6 @@ function initializeChatEvents() {
             e.preventDefault();
             sendMessage();
         }
-    });
-    
-    messageInput.addEventListener('input', function() {
-        this.style.height = 'auto';
-        this.style.height = Math.min(this.scrollHeight, 120) + 'px';
     });
     
     // Upload de imagem
@@ -371,6 +491,7 @@ function initializeChatEvents() {
             messageInput.style.height = 'auto';
             messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
             messageInput.focus();
+            updateCharCount();
         });
     });
     
@@ -385,23 +506,117 @@ function initializeChatEvents() {
     });
     
     // Limpar conversa
-    clearChatBtn.addEventListener('click', function() {
-        if (appState.chatHistory.length === 0) {
-            showNotification('Não há mensagens para limpar!', 'info');
-            return;
-        }
-        
-        if (confirm('Tem certeza que deseja limpar toda a conversa atual?')) {
-            clearCurrentChat();
-            showNotification('Conversa limpa com sucesso!', 'success');
-        }
+clearChatBtn.addEventListener('click', function () {
+    if (appState.chatHistory.length === 0) {
+        showNotification('Não há mensagens para limpar!', 'info');
+        return;
+    }
+
+    showClearChatConfirm();
+});
+    
+    // Configurações
+    settingsBtn.addEventListener('click', function() {
+        document.getElementById('settingsModal').classList.add('active');
     });
     
-    // Editar perfil
-    editProfileBtn.addEventListener('click', function() {
+    // Fechar modal
+    document.querySelectorAll('.close-modal').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.getElementById('settingsModal').classList.remove('active');
+        });
+    });
+    
+    // Velocidade de digitação
+    typingSpeedSlider.addEventListener('input', function() {
+        speedValue.textContent = `${this.value} cps`;
+        appState.settings.typingSpeed = parseInt(this.value);
+    });
+    
+    // Salvar configurações
+    document.querySelector('.save-settings').addEventListener('click', function() {
+        appState.settings.darkMode = document.getElementById('darkModeToggle').checked;
+        appState.settings.soundEnabled = document.getElementById('soundToggle').checked;
+        appState.settings.autoScroll = document.getElementById('autoScrollToggle').checked;
+        
+        localStorage.setItem("kako_settings", JSON.stringify(appState.settings));
+        document.getElementById('settingsModal').classList.remove('active');
+        showNotification('Configurações salvas!', 'success');
+    });
+    
+    // Editar perfil nas configurações
+    document.getElementById('editProfileSettingsBtn').addEventListener('click', function() {
         if (confirm('Editar seu perfil? Você será redirecionado para a tela de configuração.')) {
             localStorage.removeItem("kako_hasProfile");
             location.reload();
+        }
+    });
+    
+    // Limpar todos os dados
+    document.getElementById('clearAllDataBtn').addEventListener('click', function() {
+        if (confirm('Tem certeza que deseja limpar TODOS os dados? Isso inclui conversas, histórico e configurações.')) {
+            localStorage.clear();
+            location.reload();
+        }
+    });
+    
+    // Limpar histórico
+    document.getElementById('clearHistoryBtn').addEventListener('click', function() {
+        if (appState.savedChats.length === 0) {
+            showNotification('Não há histórico para limpar!', 'info');
+            return;
+        }
+        
+        if (confirm('Limpar todo o histórico de conversas?')) {
+            appState.savedChats = [];
+            localStorage.setItem("kako_savedChats", JSON.stringify([]));
+            updateChatHistorySidebar();
+            showNotification('Histórico limpo!', 'success');
+        }
+    });
+    
+    // Fechar modal ao clicar fora
+    document.getElementById('settingsModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            this.classList.remove('active');
+        }
+    });
+    
+    // Exportar chat
+    document.getElementById('exportChatBtn').addEventListener('click', function() {
+        if (appState.chatHistory.length === 0) {
+            showNotification('Não há conversa para exportar!', 'warning');
+            return;
+        }
+        
+        const chatText = appState.chatHistory.map(msg => 
+            `${msg.role === 'user' ? appState.userName : 'Kako'} (${msg.timestamp}): ${msg.content}`
+        ).join('\n\n');
+        
+        const blob = new Blob([chatText], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `chat-kako-${new Date().toISOString().split('T')[0]}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        showNotification('Conversa exportada com sucesso!', 'success');
+    });
+    
+    // Mostrar/ocultar histórico
+    document.getElementById('toggleHistoryBtn').addEventListener('click', function() {
+        const historySection = document.querySelector('.chat-history');
+        const icon = this.querySelector('i');
+        
+        if (historySection.style.display === 'none') {
+            historySection.style.display = 'block';
+            icon.className = 'fas fa-chevron-down';
+        } else {
+            historySection.style.display = 'none';
+            icon.className = 'fas fa-chevron-up';
         }
     });
 }
@@ -435,7 +650,7 @@ function showImagePreview(imageData) {
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            <p class="preview-hint">Imagem anexada • Clique no X para remover</p>
+            <p class="preview-hint">Imagem anexada</p>
         </div>
     `;
     
@@ -454,6 +669,12 @@ function removeImagePreview() {
 window.removeImagePreview = removeImagePreview;
 
 async function sendMessage() {
+    // PREVENIR MÚLTIPLOS ENVIOS SIMULTÂNEOS - CORREÇÃO CRÍTICA
+    if (appState.isProcessing) {
+        showNotification('Aguarde a resposta anterior...', 'warning');
+        return;
+    }
+    
     const messageInput = document.getElementById('messageInput');
     const message = messageInput.value.trim();
     
@@ -462,105 +683,302 @@ async function sendMessage() {
         return;
     }
     
-    // Remove tela de boas-vindas
-    const welcomeScreen = document.getElementById('welcomeScreen');
-    if (welcomeScreen) {
-        welcomeScreen.remove();
-    }
-    
-    // Cria mensagem do usuário
-    const userMessage = {
-        id: Date.now(),
-        role: 'user',
-        content: message || '[Imagem anexada]',
-        image: appState.currentImage,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        date: new Date().toLocaleDateString()
-    };
-    
-    // Adiciona ao histórico
-    appState.chatHistory.push(userMessage);
-    
-    // Renderiza mensagem
-    renderMessage(userMessage);
-    
-    // Limpa campos
-    messageInput.value = '';
-    messageInput.style.height = 'auto';
-    removeImagePreview();
-    
-    // Mostra indicador de digitação
-    showTypingIndicator(true);
+    // Marcar como processando
+    appState.isProcessing = true;
+    const sendBtn = document.getElementById('sendMessageBtn');
+    sendBtn.disabled = true;
     
     try {
-        // Prepara mensagens para API
-        const apiMessages = appState.chatHistory.map(msg => ({
-            role: msg.role,
-            content: msg.content
-        }));
-        
-        // Chama API
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                sessionId: sessionId,
-                messages: apiMessages,
-                imageData: appState.currentImage ? true : false
-            })
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Erro ${response.status}: ${response.statusText}`);
+        // Remove tela de boas-vindas
+        const welcomeScreen = document.getElementById('welcomeScreen');
+        if (welcomeScreen) {
+            welcomeScreen.remove();
         }
         
-        const data = await response.json();
-        
-        // Cria mensagem da IA
-        const aiMessage = {
-            id: Date.now() + 1,
-            role: 'assistant',
-            content: data.reply || "Eita, não consegui pensar numa resposta agora. Tenta de novo?",
+        // Cria mensagem do usuário
+        const userMessage = {
+            id: Date.now(),
+            role: 'user',
+            content: message || '[Imagem anexada]',
+            image: appState.currentImage,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             date: new Date().toLocaleDateString()
         };
         
         // Adiciona ao histórico
-        appState.chatHistory.push(aiMessage);
+        appState.chatHistory.push(userMessage);
         
-        // Salva no localStorage
-        localStorage.setItem("kako_chatHistory", JSON.stringify(appState.chatHistory));
+        // Renderiza mensagem
+        renderMessage(userMessage);
         
-        // Renderiza resposta
-        renderMessage(aiMessage);
+        // Limpa campos
+        messageInput.value = '';
+        messageInput.style.height = 'auto';
+        removeImagePreview();
+        updateCharCount();
         
-        // Atualiza histórico na sidebar
-        updateChatHistorySidebar();
+        // Mostra indicador de digitação INLINE
+        showTypingIndicator(true);
+        scrollToBottom();
         
-        showNotification('Kako respondeu!', 'success');
+        // TIMEOUT DE SEGURANÇA PARA API
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos
+        
+        try {
+            // Prepara mensagens para API (apenas últimas 5 para evitar payload grande)
+            const recentMessages = appState.chatHistory.slice(-5);
+            const apiMessages = recentMessages.map(msg => ({
+                role: msg.role,
+                content: msg.content
+            }));
+            
+            // Chama API com timeout
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    sessionId: sessionId,
+                    messages: apiMessages,
+                    imageData: appState.currentImage ? true : false
+                }),
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            // Esconde indicador de digitação
+            showTypingIndicator(false);
+            
+            // Cria mensagem da IA
+            const aiMessage = {
+                id: Date.now() + 1,
+                role: 'assistant',
+                content: data.reply || "Olá! Eu sou o Kako. Como posso te ajudar?",
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                date: new Date().toLocaleDateString()
+            };
+            
+            // Adiciona ao histórico
+            appState.chatHistory.push(aiMessage);
+            
+            // Salva no localStorage
+            localStorage.setItem("kako_chatHistory", JSON.stringify(appState.chatHistory));
+            
+            // Renderiza resposta COM EFEITO DE DIGITAÇÃO
+            await renderMessageWithTypingEffect(aiMessage);
+            
+            // Atualiza histórico na sidebar
+            updateChatHistorySidebar();
+            
+            if (appState.settings.soundEnabled) {
+                playNotificationSound();
+            }
+            
+            showNotification('Kako respondeu!', 'success');
+            
+        } catch (apiError) {
+            clearTimeout(timeoutId);
+            showTypingIndicator(false);
+            
+            console.error('API Error:', apiError);
+            
+            // RESPOSTA DE FALLBACK LOCAL
+            const fallbackResponses = [
+                "E aí! Beleza? 😄\nTô aqui pra te ajudar! O que você gostaria de saber?",
+                "Olá! Tudo bem com você?\nEu sou o Kako, seu assistente virtual. Pode perguntar qualquer coisa!",
+                "Opa! Tô na área! ✨\nPrecisa de ajuda com algo? Toque aqui!",
+                "Oi! 👋\nQue bom te ver por aqui! Como posso te ajudar hoje?"
+            ];
+            
+            const randomResponse = fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
+            
+            const fallbackMessage = {
+                id: Date.now() + 1,
+                role: 'assistant',
+                content: apiError.name === 'AbortError' 
+                    ? "Poxa, a conexão está um pouco lenta! 😅\nTente novamente ou faça uma pergunta mais simples." 
+                    : randomResponse,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                date: new Date().toLocaleDateString()
+            };
+            
+            appState.chatHistory.push(fallbackMessage);
+            await renderMessageWithTypingEffect(fallbackMessage);
+            
+            showNotification('Usando respostas locais', 'info');
+        }
         
     } catch (error) {
-        console.error('Erro ao enviar mensagem:', error);
-        
-        const errorMessage = {
-            id: Date.now() + 1,
-            role: 'assistant',
-            content: "Vish, deu um problema técnico aqui! 😅\n\nTenta de novo em uns segundos, beleza?",
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            date: new Date().toLocaleDateString()
-        };
-        
-        appState.chatHistory.push(errorMessage);
-        renderMessage(errorMessage);
-        
-        showNotification('Erro ao conectar com o servidor', 'error');
+        console.error('Unexpected error:', error);
+        showTypingIndicator(false);
+        showNotification('Erro inesperado', 'error');
         
     } finally {
-        showTypingIndicator(false);
+        // SEMPRE LIBERAR PARA NOVAS MENSAGENS
+        appState.isProcessing = false;
+        sendBtn.disabled = false;
         scrollToBottom();
+        
+        // Foco no input novamente
+        setTimeout(() => {
+            if (messageInput) messageInput.focus();
+        }, 100);
     }
+}
+
+async function renderMessageWithTypingEffect(message) {
+    const messagesContainer = document.getElementById('messagesContainer');
+    
+    // Cria elemento da mensagem
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message assistant';
+    messageDiv.id = `msg-${message.id}`;
+    
+    messageDiv.innerHTML = `
+        <div class="message-avatar ai-avatar">
+            <img src="image/kako-profile.png" alt="Kako">
+            <div class="ai-status-dot typing"></div>
+        </div>
+        <div class="message-content ai-content">
+            <div class="message-header">
+                <span class="message-sender">Kako <span class="ai-tag">IA</span></span>
+                <span class="message-time">${message.timestamp}</span>
+            </div>
+            <div class="message-text typing-placeholder">
+                <div class="typing-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    messagesContainer.appendChild(messageDiv);
+    scrollToBottom();
+    
+    // Remove os dots de digitação
+    setTimeout(() => {
+        const textElement = messageDiv.querySelector('.typing-placeholder');
+        
+        // Efeito de digitação mais rápido
+        const text = message.content;
+        let displayedText = '';
+        
+        // Velocidade ajustada para ser mais rápida
+        const typingSpeed = Math.max(20, Math.min(150, appState.settings.typingSpeed));
+        const delay = 1000 / typingSpeed;
+        
+        // Função para processar texto com efeito
+        const typeWriter = async () => {
+            for (let i = 0; i < text.length; i++) {
+                displayedText += text[i];
+                textElement.innerHTML = formatMessage(displayedText) + 
+                    (i < text.length - 1 ? '<span class="typing-cursor">|</span>' : '');
+                
+                // Rola para baixo periodicamente
+                if (i % 15 === 0) {
+                    scrollToBottom();
+                }
+                
+                // Pausa menor para pontuação
+                if ('.!?'.includes(text[i])) {
+                    await sleep(100);
+                }
+                
+                await sleep(delay);
+            }
+            
+            // Adiciona botões de reação após digitação completa
+            textElement.innerHTML = formatMessage(displayedText);
+            addReactionButtons(messageDiv);
+            scrollToBottom();
+        };
+        
+        typeWriter();
+    }, 300);
+}
+
+function addReactionButtons(messageDiv) {
+    const reactionsHTML = `
+        <div class="message-reactions">
+            <button class="reaction-btn" title="Útil" onclick="handleReaction(this, 'like')">
+                <i class="fas fa-thumbs-up"></i>
+            </button>
+            <button class="reaction-btn" title="Copiar" onclick="copyMessage(this)">
+                <i class="fas fa-copy"></i>
+            </button>
+            <button class="reaction-btn" title="Regenerar" onclick="regenerateMessage(this)">
+                <i class="fas fa-redo"></i>
+            </button>
+        </div>
+    `;
+    
+    const messageContent = messageDiv.querySelector('.message-content');
+    messageContent.insertAdjacentHTML('beforeend', reactionsHTML);
+}
+
+// Funções auxiliares para reações
+function handleReaction(button, type) {
+    button.classList.toggle('active');
+    const icon = button.querySelector('i');
+    
+    if (type === 'like') {
+        if (button.classList.contains('active')) {
+            icon.className = 'fas fa-thumbs-up';
+            button.style.color = 'var(--primary-orange)';
+            showNotification('Obrigado pelo feedback!', 'success');
+        } else {
+            icon.className = 'far fa-thumbs-up';
+            button.style.color = '';
+        }
+    }
+}
+
+function copyMessage(button) {
+    const messageText = button.closest('.message-content').querySelector('.message-text').textContent;
+    navigator.clipboard.writeText(messageText).then(() => {
+        const originalIcon = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-check"></i>';
+        button.style.color = 'var(--success)';
+        
+        setTimeout(() => {
+            button.innerHTML = originalIcon;
+            button.style.color = '';
+        }, 2000);
+        
+        showNotification('Mensagem copiada!', 'success');
+    });
+}
+
+function regenerateMessage(button) {
+    const messageDiv = button.closest('.message');
+    const messageContent = messageDiv.querySelector('.message-text').textContent;
+    
+    if (confirm('Regenerar esta resposta?')) {
+        // Adiciona a mensagem do usuário anterior novamente
+        const input = document.getElementById('messageInput');
+        input.value = messageContent;
+        sendMessage();
+    }
+}
+
+// Funções globais para reações
+window.handleReaction = handleReaction;
+window.copyMessage = copyMessage;
+window.regenerateMessage = regenerateMessage;
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function renderMessage(message) {
@@ -583,31 +1001,39 @@ function renderMessage(message) {
             </div>
         `;
         
+        // ALTERAÇÃO AQUI: Mostra o nome do usuário em vez de "Você"
         contentHTML = `
             <div class="message-content user-content">
                 <div class="message-header">
-                    <span class="message-sender">Você</span>
+                    <span class="message-sender">${appState.userName}</span>
                     <span class="message-time">${message.timestamp}</span>
                 </div>
                 <div class="message-text">${escapeHtml(message.content)}</div>
                 ${message.image ? `
                     <div class="message-image">
                         <img src="${message.image}" alt="Imagem enviada">
+                        <div class="image-caption">
+                            <i class="fas fa-image"></i> Imagem anexada
+                        </div>
                     </div>
                 ` : ''}
+                <div class="message-status">
+                    <i class="fas fa-check-double"></i>
+                </div>
             </div>
         `;
     } else {
         avatarHTML = `
             <div class="message-avatar ai-avatar">
                 <img src="image/kako-profile.png" alt="Kako">
+                <div class="ai-status-dot"></div>
             </div>
         `;
         
         contentHTML = `
             <div class="message-content ai-content">
                 <div class="message-header">
-                    <span class="message-sender">Kako</span>
+                    <span class="message-sender">Kako <span class="ai-tag">IA</span></span>
                     <span class="message-time">${message.timestamp}</span>
                 </div>
                 <div class="message-text">${formatMessage(message.content)}</div>
@@ -617,6 +1043,14 @@ function renderMessage(message) {
     
     messageDiv.innerHTML = avatarHTML + contentHTML;
     messagesContainer.appendChild(messageDiv);
+    
+    // Adiciona efeito de envio suave para mensagens do usuário
+    if (message.role === 'user') {
+        setTimeout(() => {
+            messageDiv.style.opacity = '1';
+            messageDiv.style.transform = 'translateY(0)';
+        }, 50);
+    }
 }
 
 function formatMessage(text) {
@@ -637,6 +1071,9 @@ function formatMessage(text) {
     // Código
     formatted = formatted.replace(/`(.*?)`/g, '<code>$1</code>');
     
+    // Links
+    formatted = formatted.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>');
+    
     return formatted;
 }
 
@@ -647,14 +1084,15 @@ function escapeHtml(text) {
 }
 
 function showTypingIndicator(show) {
-    const overlay = document.getElementById('loadingOverlay');
-    if (overlay) {
-        overlay.style.display = show ? 'flex' : 'none';
+    const indicator = document.getElementById('typingIndicator');
+    if (indicator) {
+        indicator.style.display = show ? 'flex' : 'none';
     }
-    appState.isTyping = show;
 }
 
 function scrollToBottom() {
+    if (!appState.settings.autoScroll) return;
+    
     setTimeout(() => {
         const container = document.getElementById('messagesContainer');
         if (container) {
@@ -681,55 +1119,112 @@ function loadChatHistory() {
     updateChatHistorySidebar();
 }
 
+function updateCharCount() {
+    const messageInput = document.getElementById('messageInput');
+    const charCount = document.getElementById('charCount');
+    
+    if (!messageInput || !charCount) return;
+    
+    const count = messageInput.value.length;
+    charCount.textContent = `${count}/2000`;
+    
+    if (count > 1800) {
+        charCount.style.color = 'var(--error)';
+    } else if (count > 1500) {
+        charCount.style.color = 'var(--warning)';
+    } else {
+        charCount.style.color = 'var(--text-secondary)';
+    }
+}
+
 function updateChatHistorySidebar() {
     const chatHistoryElement = document.getElementById('chatHistory');
     
-    if (appState.chatHistory.length === 0) {
+    if (appState.chatHistory.length === 0 && appState.savedChats.length === 0) {
         chatHistoryElement.innerHTML = `
             <div class="empty-history">
                 <i class="fas fa-comments"></i>
                 <p>Nenhuma conversa ainda</p>
+                <small>Comece conversando com o Kako!</small>
             </div>
         `;
         return;
     }
     
-    // Agrupa mensagens por data
-    const messagesByDate = {};
-    appState.chatHistory.forEach(msg => {
-        if (!messagesByDate[msg.date]) {
-            messagesByDate[msg.date] = [];
-        }
-        messagesByDate[msg.date].push(msg);
-    });
-    
     let historyHTML = '';
     
-    Object.keys(messagesByDate).forEach(date => {
-        const firstMessage = messagesByDate[date][0];
-        const preview = firstMessage.content.substring(0, 30) + 
-                       (firstMessage.content.length > 30 ? '...' : '');
+    // Conversa atual
+    if (appState.chatHistory.length > 0) {
+        const firstMessage = appState.chatHistory[0];
+        const lastMessage = appState.chatHistory[appState.chatHistory.length - 1];
+        const preview = firstMessage.content.substring(0, 40) + 
+                       (firstMessage.content.length > 40 ? '...' : '');
         
         historyHTML += `
-            <div class="history-item" data-date="${date}">
-                <div class="history-date">${formatDate(date)}</div>
+            <div class="history-item current">
+                <div class="history-date">Atual</div>
                 <div class="history-preview">${escapeHtml(preview)}</div>
-                <div class="history-time">${firstMessage.timestamp}</div>
+                <div class="history-meta">
+                    <span class="history-time">${lastMessage.timestamp}</span>
+                    <span class="history-count">${appState.chatHistory.length} msgs</span>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Conversas salvas
+    appState.savedChats.slice(-5).reverse().forEach(chat => {
+        const date = new Date(chat.timestamp).toLocaleDateString();
+        const time = new Date(chat.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const preview = chat.title;
+        
+        historyHTML += `
+            <div class="history-item" data-chat-id="${chat.id}">
+                <div class="history-date">${date === new Date().toLocaleDateString() ? 'Hoje' : date}</div>
+                <div class="history-preview">${escapeHtml(preview)}</div>
+                <div class="history-meta">
+                    <span class="history-time">${time}</span>
+                    <span class="history-count">${chat.messages.length} msgs</span>
+                </div>
             </div>
         `;
     });
     
     chatHistoryElement.innerHTML = historyHTML;
+    
+    // Adiciona eventos aos itens do histórico
+    document.querySelectorAll('.history-item:not(.current)').forEach(item => {
+        item.addEventListener('click', function() {
+            const chatId = this.getAttribute('data-chat-id');
+            loadSavedChat(chatId);
+        });
+    });
 }
 
-function formatDate(dateString) {
-    const today = new Date().toLocaleDateString();
-    const yesterday = new Date(Date.now() - 86400000).toLocaleDateString();
+function loadSavedChat(chatId) {
+    const chat = appState.savedChats.find(c => c.id === chatId);
+    if (!chat) return;
     
-    if (dateString === today) return 'Hoje';
-    if (dateString === yesterday) return 'Ontem';
+    // Salva conversa atual primeiro
+    if (appState.chatHistory.length > 0) {
+        const currentChatId = 'chat_' + Date.now();
+        const chatData = {
+            id: currentChatId,
+            title: appState.chatHistory[0].content.substring(0, 30) + '...',
+            messages: [...appState.chatHistory],
+            timestamp: Date.now()
+        };
+        
+        appState.savedChats.push(chatData);
+    }
     
-    return dateString;
+    // Carrega conversa salva
+    appState.chatHistory = [...chat.messages];
+    localStorage.setItem("kako_chatHistory", JSON.stringify(appState.chatHistory));
+    
+    // Recarrega interface
+    loadChatHistory();
+    showNotification('Conversa carregada!', 'success');
 }
 
 function startNewChat() {
@@ -764,6 +1259,24 @@ function startNewChat() {
                 </div>
                 <h1>Nova conversa! 🎉</h1>
                 <p>Fala aí, ${appState.userName}! Qual a boa de hoje?</p>
+                
+                <div class="quick-questions">
+                    <h3><i class="fas fa-bolt"></i> Perguntas rápidas:</h3>
+                    <div class="questions-grid">
+                        <button class="question-btn" data-question="Me explica o que é inteligência artificial de forma simples">
+                            O que é IA?
+                        </button>
+                        <button class="question-btn" data-question="Me ajuda a planejar meu dia">
+                            Planejar meu dia
+                        </button>
+                        <button class="question-btn" data-question="Cria uma receita fácil com ovo">
+                            Receita com ovo
+                        </button>
+                        <button class="question-btn" data-question="Me dá dicas para estudar melhor">
+                            Dicas de estudo
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     `;
@@ -777,9 +1290,11 @@ function startNewChat() {
             messageInput.style.height = 'auto';
             messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
             messageInput.focus();
+            updateCharCount();
         });
     });
     
+    updateChatHistorySidebar();
     showNotification('Nova conversa iniciada!', 'success');
 }
 
@@ -801,6 +1316,29 @@ function clearCurrentChat() {
     `;
     
     updateChatHistorySidebar();
+}
+
+function playNotificationSound() {
+    // Cria um som de notificação simples
+    try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = 800;
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.2);
+    } catch (e) {
+        console.log('Som não disponível');
+    }
 }
 
 function showNotification(message, type = 'info') {
@@ -842,3 +1380,57 @@ function showNotification(message, type = 'info') {
     }, 3000);
 }
 
+// PAINEL DE CONFIRMAÇÃO PARA LIMPAR MENSAGENS
+
+function showClearChatConfirm() {
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+
+overlay.innerHTML = `
+    <div class="confirm-modal">
+        <div class="confirm-icon">
+            <i class="fas fa-exclamation-triangle"></i>
+        </div>
+
+        <h3>Limpar conversa?</h3>
+        <p>
+            Todas as mensagens da conversa atual serão apagadas.
+            <br><strong>Essa ação não pode ser desfeita.</strong>
+        </p>
+
+        <div class="confirm-actions">
+            <button class="btn-secondary" id="cancelClearChat">
+                Cancelar
+            </button>
+            <button class="btn-primary danger" id="confirmClearChat">
+                Limpar
+            </button>
+        </div>
+    </div>
+`;
+
+    document.body.appendChild(overlay);
+
+    // Cancelar
+    overlay.querySelector('#cancelClearChat').onclick = () => {
+        overlay.remove();
+    };
+
+// Confirmar (com shake)
+const confirmBtn = overlay.querySelector('#confirmClearChat');
+
+confirmBtn.onclick = () => {
+    confirmBtn.classList.add('shake');
+
+    setTimeout(() => {
+        clearCurrentChat();
+        overlay.remove();
+        showNotification('Conversa limpa com sucesso!', 'success');
+    }, 400);
+};
+
+    // Clique fora fecha
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.remove();
+    });
+}
