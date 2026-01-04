@@ -344,7 +344,7 @@ function initializeChatInterface() {
                             <span></span>
                             <span></span>
                             <span></span>
-                            <span>Kako está digitando...</span>
+                            <span>hmmm...</span>
                         </div>
                         <p><i class="fas fa-lightbulb"></i> Kako consegue analisar texto em imagens</p>
                     </div>
@@ -1434,3 +1434,4 @@ confirmBtn.onclick = () => {
         if (e.target === overlay) overlay.remove();
     });
 }
+
