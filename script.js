@@ -1,6 +1,6 @@
 // script.js - Arquivo principal do Kako Chat
 // URL da API no Vercel
-const API_URL = "https://seu-projeto.vercel.app/api/chat";
+const API_URL = "https://kako-kakos.vercel.app/api/chat";
 
 // Session ID
 let sessionId = localStorage.getItem("kako_sessionId");
@@ -841,3 +841,4 @@ function showNotification(message, type = 'info') {
         }, 300);
     }, 3000);
 }
+
