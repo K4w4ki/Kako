@@ -1,9 +1,6 @@
 {
   "name": "kako-chat",
   "version": "1.0.0",
-    "engines": {
-    "node": "24.x"
-  }
   "type": "module",
   "description": "Chatbot Kako com LLaMA 3.2 - Assistente IA brincalhão",
   "main": "index.html",
@@ -26,3 +23,4 @@
     "node": "24.x"
   }
 }
+
