@@ -13,16 +13,27 @@ if (!sessionId) {
 const appState = {
     userName: localStorage.getItem("kako_userName") || "",
     userAvatar: localStorage.getItem("kako_userAvatar") || "",
+    userBanner: localStorage.getItem("kako_userBanner") || "gradient1",
     chatHistory: JSON.parse(localStorage.getItem("kako_chatHistory")) || [],
+    userBanner: localStorage.getItem("kako_userBanner") || "default", // salvar banner ne pae
     currentImage: null,
     isProcessing: false,
     isTyping: false,
     savedChats: JSON.parse(localStorage.getItem("kako_savedChats")) || [],
     settings: JSON.parse(localStorage.getItem("kako_settings")) || {
+        theme: 'dark',
         typingSpeed: 50,
         soundEnabled: true,
-        darkMode: true,
-        autoScroll: true
+        autoScroll: true,
+        enterToSend: true,
+        markdown: true,
+        desktopNotifications: false,
+        saveChatHistory: true,
+        analytics: false,
+        animations: true,
+        blurEffects: true,
+        highContrast: false,
+        reduceMotion: false
     }
 };
 
@@ -53,7 +64,7 @@ function showSetupModal() {
                         <div class="logo-icon">🤖</div>
                         <h1>Kako</h1>
                     </div>
-                    <p>Seu assistente IA inteligente e brincalhão</p>
+                    <p>Seu Assistente IA Vê se não viaja hein</p>
                 </div>
                 
                 <div class="setup-body">
@@ -185,38 +196,59 @@ function loadUserProfile() {
 }
 
 function initializeChatInterface() {
+
+                
+    // Restaura o banner do usuário
+    setTimeout(() => {
+        restoreBanner(appState.userBanner);
+    }, 100);
+
     const chatHTML = `
         <div class="chat-app">
             <!-- Sidebar -->
             <div class="sidebar">
-                <div class="sidebar-header">
-                    <div class="app-logo">
-                        <div class="logo-icon">K</div>
-                        <h2>Kako Chat</h2>
-                    </div>
-                    <button id="newChatBtn" class="btn-new-chat">
-                        <i class="fas fa-plus"></i> Nova conversa
-                    </button>
-                </div>
-                
-                <!-- Histórico Aprimorado -->
-                <div class="history-section">
-                    <div class="section-header">
-                        <h3><i class="fas fa-history"></i> Histórico</h3>
-                        <div class="history-controls">
-                            <button id="clearHistoryBtn" class="btn-icon small" title="Limpar histórico">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                            <button id="toggleHistoryBtn" class="btn-icon small">
-                                <i class="fas fa-chevron-down"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="chat-history" id="chatHistory">
-                        <!-- Histórico será carregado aqui -->
-                    </div>
-                </div>
-                
+<div class="sidebar-header">
+    <div class="sidebar-header-content">
+        <div class="kako-profile">
+            <div class="kako-avatar">
+                <img src="image/kako-profile.png" alt="Kako">
+            </div>
+            <div class="kako-name">Kako</div>
+        </div>
+        <button id="newChatBtn" class="btn-new-chat">
+            <i class="fas fa-plus"></i> <span class="btn-text">Nova conversa</span>
+        </button>
+    </div>
+</div>
+
+<!-- Histórico Moderno -->
+<div class="history-section">
+    <div class="section-header">
+        <div class="section-title">
+            <i class="fas fa-history"></i>
+            <h3>Histórico de Conversas</h3>
+        </div>
+        <div class="history-controls">
+            <button id="clearHistoryBtn" class="btn-icon small" title="Limpar histórico">
+                <i class="fas fa-trash-alt"></i>
+            </button>
+            <button id="toggleHistoryBtn" class="btn-icon small">
+                <i class="fas fa-chevron-down"></i>
+            </button>
+        </div>
+    </div>
+    
+    <div class="chat-history" id="chatHistory">
+        <!-- Histórico será carregado aqui -->
+        <div class="history-empty-state">
+            <div class="empty-icon">
+                <i class="fas fa-comment-slash"></i>
+            </div>
+            <p class="empty-title">Nenhuma conversa</p>
+            <p class="empty-description">Comece conversando com o Kako!</p>
+        </div>
+    </div>
+</div>           
                 <div class="user-profile">
                     <div class="user-info">
                         <div class="user-avatar" id="currentUserAvatar">
@@ -244,11 +276,12 @@ function initializeChatInterface() {
                     <div class="ai-info">
                         <div class="ai-avatar">
                             <img src="image/kako-profile.png" alt="Kako">
-                            <div class="online-dot"></div>
                         </div>
                         <div class="ai-details">
                             <h3>Kako <span class="ai-badge">IA</span></h3>
-                            <p class="ai-status">Online • Inteligente e brincalhão</p>
+                            <p class="ai-status">
+                      <span class="ai-status-indicator">Online</span> • Inteligente e brincalhão
+                          </p>
                         </div>
                     </div>
                     
@@ -351,6 +384,354 @@ function initializeChatInterface() {
                 </div>
             </div>
             
+<!-- Modal de Configurações Discord Style -->
+<div id="settingsModal" class="modal">
+    <div class="modal-content discord-modal">
+        <div class="modal-header discord-header">
+            <h3><i class="fas fa-cog"></i> Configurações do Usuário</h3>
+            <button class="btn-icon close-modal">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <div class="discord-body">
+            <!-- Sidebar de navegação -->
+            <div class="discord-sidebar">
+                <div class="user-profile-card">
+                    <div class="profile-banner" id="profileBanner">
+                    
+                        <div class="banner-overlay">
+                            <button id="changeBannerBtn" class="banner-change-btn">
+                                <i class="fas fa-camera"></i> Alterar
+                            </button>
+                        </div>
+                    </div>
+                    <div class="profile-content">
+                        <div class="profile-avatar-wrapper">
+                            <div class="profile-avatar" id="profileAvatarPreview">
+                                ${appState.userAvatar ? 
+                                    `<img src="${appState.userAvatar}" alt="${appState.userName}">` : 
+                                    `<i class="fas fa-user-circle"></i>`
+                                }
+                            </div>
+                            <button id="changeAvatarBtn" class="avatar-change-btn">
+                                <i class="fas fa-camera"></i>
+                            </button>
+                        </div>
+                        <div class="profile-info">
+                            <h4 class="profile-name">${appState.userName}</h4>
+                            <p class="profile-email">${appState.userName.toLowerCase()}@kako.chat</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <nav class="settings-nav">
+                    <a href="#appearance" class="nav-item active" data-tab="appearance">
+                        <i class="fas fa-palette"></i>
+                        <span>Aparência</span>
+                    </a>
+                    <a href="#account" class="nav-item" data-tab="account">
+                        <i class="fas fa-user-cog"></i>
+                        <span>Conta</span>
+                    </a>
+                    <a href="#chat" class="nav-item" data-tab="chat">
+                        <i class="fas fa-comments"></i>
+                        <span>Chat</span>
+                    </a>
+                    <a href="#accessibility" class="nav-item" data-tab="accessibility">
+                        <i class="fas fa-universal-access"></i>
+                        <span>Acessibilidade</span>
+                    </a>
+                    <a href="#advanced" class="nav-item" data-tab="advanced">
+                        <i class="fas fa-sliders-h"></i>
+                        <span>Avançado</span>
+                    </a>
+                </nav>
+            </div>
+            
+            <!-- Conteúdo das configurações -->
+            <div class="discord-content">
+                <div class="settings-tab active" id="appearanceTab">
+                    <h4 class="tab-title">
+                        <i class="fas fa-palette"></i>
+                        Aparência
+                    </h4>
+                    
+                    <div class="settings-group">
+                        <h5>Tema</h5>
+                        <div class="theme-selector">
+                            <div class="theme-option ${appState.settings.theme === 'dark' ? 'active' : ''}" data-theme="dark">
+                                <div class="theme-preview dark-theme">
+                                    <div class="preview-header"></div>
+                                    <div class="preview-sidebar"></div>
+                                    <div class="preview-content"></div>
+                                </div>
+                                <span>Escuro</span>
+                            </div>
+                            <div class="theme-option ${appState.settings.theme === 'light' ? 'active' : ''}" data-theme="light">
+                                <div class="theme-preview light-theme">
+                                    <div class="preview-header"></div>
+                                    <div class="preview-sidebar"></div>
+                                    <div class="preview-content"></div>
+                                </div>
+                                <span>Claro</span>
+                            </div>
+                            <div class="theme-option ${appState.settings.theme === 'auto' ? 'active' : ''}" data-theme="auto">
+                                <div class="theme-preview auto-theme">
+                                    <div class="preview-header"></div>
+                                    <div class="preview-sidebar"></div>
+                                    <div class="preview-content"></div>
+                                    <div class="auto-icon">
+                                        <i class="fas fa-adjust"></i>
+                                    </div>
+                                </div>
+                                <span>Automático</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="settings-group">
+                        <h5>Fundo do Perfil</h5>
+                        <div class="banner-preview" id="bannerPreview">
+                            <div class="banner-options">
+                                <button class="banner-option" data-banner="gradient1">
+                                    <div class="banner-sample gradient-1"></div>
+                                    <span>Gradiente 1</span>
+                                </button>
+                                <button class="banner-option" data-banner="gradient2">
+                                    <div class="banner-sample gradient-2"></div>
+                                    <span>Gradiente 2</span>
+                                </button>
+                                <button class="banner-option" data-banner="gradient3">
+                                    <div class="banner-sample gradient-3"></div>
+                                    <span>Gradiente 3</span>
+                                </button>
+                                <button class="banner-option" data-banner="custom">
+                                    <div class="banner-sample custom-banner">
+                                        <i class="fas fa-image"></i>
+                                    </div>
+                                    <span>Personalizado</span>
+                                </button>
+                            </div>
+                            <input type="file" id="customBannerUpload" accept="image/*" hidden>
+                        </div>
+                    </div>
+                    
+                    <div class="settings-group">
+                        <h5>Efeitos Visuais</h5>
+                        <div class="setting-item">
+                            <label>
+                                <input type="checkbox" id="animationsToggle" ${appState.settings.animations ? 'checked' : ''}>
+                                <span>Animações</span>
+                                <small>Ativar transições suaves</small>
+                            </label>
+                        </div>
+                        <div class="setting-item">
+                            <label>
+                                <input type="checkbox" id="blurEffectsToggle" ${appState.settings.blurEffects ? 'checked' : ''}>
+                                <span>Efeitos de Blur</span>
+                                <small>Fundo desfocado</small>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="settings-tab" id="accountTab">
+                    <h4 class="tab-title">
+                        <i class="fas fa-user-cog"></i>
+                        Conta
+                    </h4>
+                    
+                    <div class="settings-group">
+                        <h5>Informações do Perfil</h5>
+                        <div class="form-group">
+                            <label for="settingsUserName">Nome de Usuário</label>
+                            <input type="text" id="settingsUserName" value="${appState.userName}" maxlength="32">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Avatar</label>
+                            <div class="avatar-upload-preview">
+                                <div class="current-avatar" id="currentAvatarDisplay">
+                                    ${appState.userAvatar ? 
+                                        `<img src="${appState.userAvatar}" alt="Avatar atual">` : 
+                                        `<i class="fas fa-user-circle"></i>`
+                                    }
+                                </div>
+                                <div class="upload-actions">
+                                    <button id="uploadAvatarBtn" class="btn-secondary">
+                                        <i class="fas fa-upload"></i> Enviar Nova Foto
+                                    </button>
+                                    <input type="file" id="avatarUploadSettings" accept="image/*" hidden>
+                                    <p class="upload-hint">PNG, JPG até 5MB</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="settings-group">
+                        <h5>Privacidade</h5>
+                        <div class="setting-item">
+                            <label>
+                                <input type="checkbox" id="saveChatHistoryToggle" ${appState.settings.saveChatHistory ? 'checked' : ''}>
+                                <span>Salvar histórico de conversas</span>
+                                <small>Armazenar conversas localmente</small>
+                            </label>
+                        </div>
+                        <div class="setting-item">
+                            <label>
+                                <input type="checkbox" id="analyticsToggle" ${appState.settings.analytics ? 'checked' : ''}>
+                                <span>Compartilhar estatísticas anônimas</span>
+                                <small>Ajudar a melhorar o Kako</small>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="settings-tab" id="chatTab">
+                    <h4 class="tab-title">
+                        <i class="fas fa-comments"></i>
+                        Chat
+                    </h4>
+                    
+                    <div class="settings-group">
+                        <h5>Comportamento</h5>
+                        <div class="setting-item">
+                            <label>
+                                <input type="checkbox" id="autoScrollToggle" ${appState.settings.autoScroll ? 'checked' : ''}>
+                                <span>Rolagem automática</span>
+                                <small>Sempre mostrar mensagens novas</small>
+                            </label>
+                        </div>
+                        <div class="setting-item">
+                            <label>
+                                <input type="checkbox" id="enterToSendToggle" ${appState.settings.enterToSend ? 'checked' : ''}>
+                                <span>Enter para enviar</span>
+                                <small>Shift+Enter para nova linha</small>
+                            </label>
+                        </div>
+                        <div class="setting-item">
+                            <label>
+                                <input type="checkbox" id="markdownToggle" ${appState.settings.markdown ? 'checked' : ''}>
+                                <span>Formatação Markdown</span>
+                                <small>Reconhecer **negrito**, *itálico*, etc.</small>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="settings-group">
+                        <h5>Notificações</h5>
+                        <div class="setting-item">
+                            <label>
+                                <input type="checkbox" id="soundToggle" ${appState.settings.soundEnabled ? 'checked' : ''}>
+                                <span>Sons de notificação</span>
+                                <small>Reproduzir sons ao receber respostas</small>
+                            </label>
+                        </div>
+                        <div class="setting-item">
+                            <label>
+                                <input type="checkbox" id="desktopNotificationsToggle" ${appState.settings.desktopNotifications ? 'checked' : ''}>
+                                <span>Notificações na área de trabalho</span>
+                                <small>Quando a janela não está em foco</small>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="settings-tab" id="accessibilityTab">
+                    <h4 class="tab-title">
+                        <i class="fas fa-universal-access"></i>
+                        Acessibilidade
+                    </h4>
+                    
+                    <div class="settings-group">
+                        <h5>Velocidade de Digitação</h5>
+                        <div class="setting-item">
+                            <div class="slider-container">
+                                <input type="range" id="typingSpeedSlider" min="10" max="200" value="${appState.settings.typingSpeed}">
+                                <div class="slider-labels">
+                                    <span>Lento</span>
+                                    <span id="speedValueDisplay">${appState.settings.typingSpeed} cps</span>
+                                    <span>Rápido</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="settings-group">
+                        <h5>Visual</h5>
+                        <div class="setting-item">
+                            <label>
+                                <input type="checkbox" id="highContrastToggle" ${appState.settings.highContrast ? 'checked' : ''}>
+                                <span>Alto contraste</span>
+                                <small>Melhorar visibilidade</small>
+                            </label>
+                        </div>
+                        <div class="setting-item">
+                            <label>
+                                <input type="checkbox" id="reduceMotionToggle" ${appState.settings.reduceMotion ? 'checked' : ''}>
+                                <span>Reduzir movimento</span>
+                                <small>Diminuir animações</small>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="settings-tab" id="advancedTab">
+                    <h4 class="tab-title">
+                        <i class="fas fa-sliders-h"></i>
+                        Avançado
+                    </h4>
+                    
+                    <div class="settings-group">
+                        <h5>Dados</h5>
+                        <div class="danger-zone">
+                            <div class="danger-item">
+                                <div class="danger-info">
+                                    <h6>Limpar Histórico</h6>
+                                    <p>Remove todas as conversas salvas</p>
+                                </div>
+                                <button id="clearHistorySettingsBtn" class="btn-secondary danger">
+                                    <i class="fas fa-trash"></i> Limpar
+                                </button>
+                            </div>
+                            
+                            <div class="danger-item">
+                                <div class="danger-info">
+                                    <h6>Resetar Configurações</h6>
+                                    <p>Restaura todas as configurações padrão</p>
+                                </div>
+                                <button id="resetSettingsBtn" class="btn-secondary danger">
+                                    <i class="fas fa-undo"></i> Resetar
+                                </button>
+                            </div>
+                            
+                            <div class="danger-item">
+                                <div class="danger-info">
+                                    <h6>Exportar Dados</h6>
+                                    <p>Baixe todas as suas conversas</p>
+                                </div>
+                                <button id="exportDataBtn" class="btn-secondary">
+                                    <i class="fas fa-download"></i> Exportar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="modal-footer discord-footer">
+            <button class="btn-secondary" id="cancelSettings">
+                Cancelar
+            </button>
+            <button class="btn-primary" id="saveSettingsBtn">
+                <i class="fas fa-save"></i> Salvar Alterações
+            </button>
+        </div>
+    </div>
+</div>
+
             <!-- Modal de Configurações -->
             <div id="settingsModal" class="modal">
                 <div class="modal-content">
@@ -516,9 +897,353 @@ clearChatBtn.addEventListener('click', function () {
 });
     
     // Configurações
-    settingsBtn.addEventListener('click', function() {
-        document.getElementById('settingsModal').classList.add('active');
+settingsBtn.addEventListener('click', function() {
+    document.getElementById('settingsModal').classList.add('active');
+    initializeSettingsModal();
+});
+
+// Adicione esta função para inicializar o modal:
+function initializeSettingsModal() {
+    // Navegação entre abas
+        restoreBanner(appState.userBanner); // restaura o banner salvo no localstoragefodase
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            // Remove classe ativa de todos
+            document.querySelectorAll('.nav-item').forEach(nav => {
+                nav.classList.remove('active');
+            });
+            document.querySelectorAll('.settings-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Adiciona classe ativa ao selecionado
+            this.classList.add('active');
+            const tabId = this.getAttribute('data-tab');
+            document.getElementById(`${tabId}Tab`).classList.add('active');
+        });
     });
+    
+    // Seletor de tema
+    document.querySelectorAll('.theme-option').forEach(option => {
+        option.addEventListener('click', function() {
+            document.querySelectorAll('.theme-option').forEach(opt => {
+                opt.classList.remove('active');
+            });
+            this.classList.add('active');
+            const theme = this.getAttribute('data-theme');
+            
+            // Aplica o tema imediatamente para visualização
+            applyTheme(theme);
+        });
+    });
+    function restoreBanner(bannerType) {
+    const banner = document.getElementById('profileBanner');
+    
+    if (!banner) return;
+    
+    // Se for uma imagem base64 (customizada)
+    if (bannerType && bannerType.startsWith('data:image')) {
+        banner.style.backgroundImage = `url(${bannerType})`;
+        banner.style.backgroundSize = 'cover';
+        banner.style.backgroundPosition = 'center';
+        banner.classList.remove('default-banner');
+    } 
+    // Se for um dos gradientes
+    else if (bannerType && bannerType !== 'default') {
+        applyBanner(bannerType);
+    } 
+    // Banner padrão
+    else {
+        banner.style.background = 'linear-gradient(135deg, var(--primary-orange), var(--primary-orange-dark))';
+        banner.classList.add('default-banner');
+    }
+}
+
+    // Seletor de banner
+    document.querySelectorAll('.banner-option').forEach(option => {
+        option.addEventListener('click', function() {
+            const banner = this.getAttribute('data-banner');
+            if (banner === 'custom') {
+                document.getElementById('customBannerUpload').click();
+            } else {
+                applyBanner(banner);
+            }
+        });
+    });
+    
+    // Upload de banner personalizado
+    document.getElementById('customBannerUpload').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file && file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                applyCustomBanner(event.target.result);
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+    
+    // Upload de avatar
+    document.getElementById('changeAvatarBtn').addEventListener('click', function() {
+        document.getElementById('avatarUploadSettings').click();
+    });
+    
+    document.getElementById('uploadAvatarBtn').addEventListener('click', function() {
+        document.getElementById('avatarUploadSettings').click();
+    });
+    
+    document.getElementById('avatarUploadSettings').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file && file.type.startsWith('image/')) {
+            if (file.size > 5 * 1024 * 1024) {
+                showNotification('A imagem deve ter no máximo 5MB!', 'error');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const avatarPreview = document.getElementById('profileAvatarPreview');
+                const currentAvatar = document.getElementById('currentAvatarDisplay');
+                
+                avatarPreview.innerHTML = `<img src="${event.target.result}" alt="Avatar">`;
+                currentAvatar.innerHTML = `<img src="${event.target.result}" alt="Avatar atual">`;
+                
+                // Atualiza em tempo real
+                appState.userAvatar = event.target.result;
+                updateUserAvatarInUI();
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+    
+    // Botão de alterar banner
+    document.getElementById('changeBannerBtn').addEventListener('click', function() {
+        document.getElementById('customBannerUpload').click();
+    });
+    
+    // Salvar configurações
+    document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
+    
+    // Cancelar
+    document.getElementById('cancelSettings').addEventListener('click', function() {
+        document.getElementById('settingsModal').classList.remove('active');
+        // Reverte para tema original
+        applyTheme(appState.settings.theme || 'dark');
+    });
+    
+    // Botões de perigo
+    document.getElementById('clearHistorySettingsBtn').addEventListener('click', function() {
+        if (confirm('Tem certeza que deseja limpar todo o histórico de conversas?')) {
+            appState.savedChats = [];
+            localStorage.setItem("kako_savedChats", JSON.stringify([]));
+            updateChatHistorySidebar();
+            showNotification('Histórico limpo!', 'success');
+        }
+    });
+    
+    document.getElementById('resetSettingsBtn').addEventListener('click', function() {
+        if (confirm('Resetar todas as configurações para os valores padrão?')) {
+            appState.settings = {
+                theme: 'dark',
+                typingSpeed: 50,
+                soundEnabled: true,
+                autoScroll: true,
+                enterToSend: true,
+                markdown: true,
+                desktopNotifications: false,
+                saveChatHistory: true,
+                analytics: false,
+                animations: true,
+                blurEffects: true,
+                highContrast: false,
+                reduceMotion: false
+            };
+            
+            localStorage.setItem("kako_settings", JSON.stringify(appState.settings));
+            applyTheme('dark');
+            showNotification('Configurações resetadas!', 'success');
+        }
+    });
+    
+    document.getElementById('exportDataBtn').addEventListener('click', function() {
+        const data = {
+            userProfile: {
+                name: appState.userName,
+                avatar: appState.userAvatar ? 'Base64 Image' : 'No Avatar',
+                settings: appState.settings
+            },
+            chatHistory: appState.chatHistory,
+            savedChats: appState.savedChats,
+            exportDate: new Date().toISOString()
+        };
+        
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `kako-backup-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        showNotification('Dados exportados com sucesso!', 'success');
+    });
+    
+    // Atualizar nome de usuário em tempo real
+    document.getElementById('settingsUserName').addEventListener('input', function() {
+        const newName = this.value.trim();
+        if (newName) {
+            document.querySelector('.profile-name').textContent = newName;
+            appState.userName = newName;
+            updateUserNameInUI();
+        }
+    });
+    
+    // Inicializa valores
+    const theme = appState.settings.theme || 'dark';
+    document.querySelector(`.theme-option[data-theme="${theme}"]`)?.classList.add('active');
+}
+
+// Função para aplicar tema
+function applyTheme(theme) {
+    // Remove classes de tema existentes
+    document.body.classList.remove('dark-theme', 'light-theme', 'auto-theme');
+    
+    if (theme === 'auto') {
+        // Detecta preferência do sistema
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.body.classList.add(prefersDark ? 'dark-theme' : 'light-theme');
+        document.body.classList.add('auto-theme');
+    } else {
+        document.body.classList.add(`${theme}-theme`);
+    }
+    
+    // Salva temporariamente para preview
+    appState.settings.theme = theme;
+}
+
+// Função para aplicar banner
+function applyBanner(bannerType) {
+    const banner = document.getElementById('profileBanner');
+    
+    // Limpa estilos anteriores
+    banner.style.backgroundImage = '';
+    banner.style.backgroundSize = '';
+    banner.style.backgroundPosition = '';
+    
+    switch(bannerType) {
+        case 'gradient1':
+            banner.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+            appState.userBanner = 'gradient1';
+            break;
+        case 'gradient2':
+            banner.style.background = 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)';
+            appState.userBanner = 'gradient2';
+            break;
+        case 'gradient3':
+            banner.style.background = 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)';
+            appState.userBanner = 'gradient3';
+            break;
+        default:
+            banner.style.background = 'linear-gradient(135deg, var(--primary-orange), var(--primary-orange-dark))';
+            appState.userBanner = 'default';
+    }
+    
+    banner.classList.remove('default-banner');
+    
+    // Salva no localStorage
+    localStorage.setItem("kako_userBanner", appState.userBanner);
+}
+
+// Função para banner customizado
+function applyCustomBanner(imageData) {
+    const banner = document.getElementById('profileBanner');
+    
+    // Limpa gradientes anteriores
+    banner.style.background = '';
+    
+    banner.style.backgroundImage = `url(${imageData})`;
+    banner.style.backgroundSize = 'cover';
+    banner.style.backgroundPosition = 'center';
+    banner.classList.remove('default-banner');
+    
+    // Salva como base64 no estado
+    appState.userBanner = imageData;
+    localStorage.setItem("kako_userBanner", imageData);
+}
+
+// Salvar configurações
+function saveSettings() {
+    // Coleta todos os valores
+    appState.settings.theme = document.querySelector('.theme-option.active')?.getAttribute('data-theme') || 'dark';
+    appState.settings.typingSpeed = parseInt(document.getElementById('typingSpeedSlider').value);
+    appState.settings.soundEnabled = document.getElementById('soundToggle').checked;
+    appState.settings.autoScroll = document.getElementById('autoScrollToggle').checked;
+    appState.settings.enterToSend = document.getElementById('enterToSendToggle').checked;
+    appState.settings.markdown = document.getElementById('markdownToggle').checked;
+    appState.settings.desktopNotifications = document.getElementById('desktopNotificationsToggle').checked;
+    appState.settings.saveChatHistory = document.getElementById('saveChatHistoryToggle').checked;
+    appState.settings.analytics = document.getElementById('analyticsToggle').checked;
+    appState.settings.animations = document.getElementById('animationsToggle').checked;
+    appState.settings.blurEffects = document.getElementById('blurEffectsToggle').checked;
+    appState.settings.highContrast = document.getElementById('highContrastToggle').checked;
+    appState.settings.reduceMotion = document.getElementById('reduceMotionToggle').checked;
+    
+        // Salva banner se houver alteração
+    if (appState.userBanner) {
+        localStorage.setItem("kako_userBanner", appState.userBanner);
+    }
+
+    // Nome de usuário
+    const newName = document.getElementById('settingsUserName').value.trim();
+    if (newName && newName !== appState.userName) {
+        appState.userName = newName;
+        localStorage.setItem("kako_userName", appState.userName);
+        updateUserNameInUI();
+    }
+    
+    // Avatar
+    if (appState.userAvatar) {
+        localStorage.setItem("kako_userAvatar", appState.userAvatar);
+    }
+    
+    // Salva no localStorage
+    localStorage.setItem("kako_settings", JSON.stringify(appState.settings));
+    
+    // Aplica o tema definitivamente
+    applyTheme(appState.settings.theme);
+    
+    // Fecha o modal
+    document.getElementById('settingsModal').classList.remove('active');
+    
+    showNotification('Configurações salvas com sucesso!', 'success');
+}
+
+// Funções auxiliares para atualizar UI
+function updateUserAvatarInUI() {
+    const avatarElements = document.querySelectorAll('.user-avatar, #currentUserAvatar .user-avatar');
+    avatarElements.forEach(el => {
+        if (appState.userAvatar) {
+            el.innerHTML = `<img src="${appState.userAvatar}" alt="${appState.userName}">`;
+        } else {
+            el.innerHTML = `<i class="fas fa-user-circle"></i>`;
+        }
+    });
+}
+
+function updateUserNameInUI() {
+    document.querySelectorAll('.user-name').forEach(el => {
+        el.textContent = appState.userName;
+    });
+    
+    // Atualiza nas mensagens existentes
+    document.querySelectorAll('.message.user .message-sender').forEach(el => {
+        el.textContent = appState.userName;
+    });
+}
     
     // Fechar modal
     document.querySelectorAll('.close-modal').forEach(btn => {
@@ -740,10 +1465,11 @@ async function sendMessage() {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    sessionId: sessionId,
-                    messages: apiMessages,
-                    imageData: appState.currentImage ? true : false
-                }),
+                sessionId: sessionId,
+                messages: apiMessages,
+                imageData: appState.currentImage ? true : false,
+                userName: appState.userName // ← USUÁRIO
+            }),
                 signal: controller.signal
             });
             
@@ -1002,26 +1728,34 @@ function renderMessage(message) {
         `;
         
         // ALTERAÇÃO AQUI: Mostra o nome do usuário em vez de "Você"
-        contentHTML = `
-            <div class="message-content user-content">
-                <div class="message-header">
-                    <span class="message-sender">${appState.userName}</span>
-                    <span class="message-time">${message.timestamp}</span>
-                </div>
-                <div class="message-text">${escapeHtml(message.content)}</div>
-                ${message.image ? `
-                    <div class="message-image">
-                        <img src="${message.image}" alt="Imagem enviada">
-                        <div class="image-caption">
-                            <i class="fas fa-image"></i> Imagem anexada
-                        </div>
-                    </div>
-                ` : ''}
-                <div class="message-status">
-                    <i class="fas fa-check-double"></i>
+contentHTML = `
+    <div class="message-content user-content">
+        <div class="message-header">
+            <span class="message-sender">${appState.userName}</span>
+            <span class="message-time">${message.timestamp}</span>
+        </div>
+        <div class="message-text">${escapeHtml(message.content)}</div>
+        ${message.image ? `
+            <div class="message-image">
+                <img src="${message.image}" alt="Imagem enviada">
+                <div class="image-caption">
+                    <i class="fas fa-image"></i> Imagem anexada
                 </div>
             </div>
-        `;
+        ` : ''}
+        <div class="message-reactions">
+            <button class="reaction-btn" title="Copiar" onclick="copyUserMessage(this)">
+                <i class="fas fa-copy"></i>
+            </button>
+            <button class="reaction-btn" title="Editar" onclick="editUserMessage(this)">
+                <i class="fas fa-edit"></i>
+            </button>
+            <button class="reaction-btn" title="Excluir" onclick="deleteUserMessage(this)">
+                <i class="fas fa-trash"></i>
+            </button>
+        </div>
+    </div>
+`;
     } else {
         avatarHTML = `
             <div class="message-avatar ai-avatar">
@@ -1052,6 +1786,63 @@ function renderMessage(message) {
         }, 50);
     }
 }
+
+// Funções para os botões das mensagens do usuário
+function copyUserMessage(button) {
+    const messageText = button.closest('.message-content').querySelector('.message-text').textContent;
+    navigator.clipboard.writeText(messageText).then(() => {
+        const originalIcon = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-check"></i>';
+        button.style.color = 'white';
+        
+        setTimeout(() => {
+            button.innerHTML = originalIcon;
+            button.style.color = '';
+        }, 2000);
+        
+        showNotification('Mensagem copiada!', 'success');
+    });
+}
+
+function editUserMessage(button) {
+    const messageDiv = button.closest('.message');
+    const messageText = messageDiv.querySelector('.message-text').textContent;
+    const messageInput = document.getElementById('messageInput');
+    
+    messageInput.value = messageText;
+    messageInput.focus();
+    messageInput.style.height = 'auto';
+    messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
+    updateCharCount();
+    
+    // Remove a mensagem após edição
+    setTimeout(() => {
+        deleteUserMessage(button);
+    }, 100);
+}
+
+function deleteUserMessage(button) {
+    const messageDiv = button.closest('.message');
+    const messageId = parseInt(messageDiv.id.replace('msg-', ''));
+    
+    // Remove do histórico
+    appState.chatHistory = appState.chatHistory.filter(msg => msg.id !== messageId);
+    localStorage.setItem("kako_chatHistory", JSON.stringify(appState.chatHistory));
+    
+    // Animação de remoção
+    messageDiv.style.opacity = '0';
+    messageDiv.style.transform = 'translateX(100px)';
+    setTimeout(() => {
+        if (messageDiv.parentNode) {
+            messageDiv.remove();
+        }
+    }, 300);
+}
+
+// Adiciona as funções ao escopo global
+window.copyUserMessage = copyUserMessage;
+window.editUserMessage = editUserMessage;
+window.deleteUserMessage = deleteUserMessage;
 
 function formatMessage(text) {
     // Processa formatação básica
@@ -1142,10 +1933,12 @@ function updateChatHistorySidebar() {
     
     if (appState.chatHistory.length === 0 && appState.savedChats.length === 0) {
         chatHistoryElement.innerHTML = `
-            <div class="empty-history">
-                <i class="fas fa-comments"></i>
-                <p>Nenhuma conversa ainda</p>
-                <small>Comece conversando com o Kako!</small>
+            <div class="history-empty-state">
+                <div class="empty-icon">
+                    <i class="fas fa-comment-slash"></i>
+                </div>
+                <p class="empty-title">Nenhuma conversa</p>
+                <p class="empty-description">Comece conversando com o Kako!</p>
             </div>
         `;
         return;
@@ -1157,34 +1950,51 @@ function updateChatHistorySidebar() {
     if (appState.chatHistory.length > 0) {
         const firstMessage = appState.chatHistory[0];
         const lastMessage = appState.chatHistory[appState.chatHistory.length - 1];
-        const preview = firstMessage.content.substring(0, 40) + 
-                       (firstMessage.content.length > 40 ? '...' : '');
+        const preview = firstMessage.content.substring(0, 50) + 
+                       (firstMessage.content.length > 50 ? '...' : '');
         
         historyHTML += `
             <div class="history-item current">
-                <div class="history-date">Atual</div>
+                <div class="history-item-header">
+                    <div class="history-date">Agora</div>
+                    <div class="history-time">${lastMessage.timestamp}</div>
+                </div>
                 <div class="history-preview">${escapeHtml(preview)}</div>
                 <div class="history-meta">
-                    <span class="history-time">${lastMessage.timestamp}</span>
-                    <span class="history-count">${appState.chatHistory.length} msgs</span>
+                    <div class="history-count">${appState.chatHistory.length} mensagens</div>
                 </div>
             </div>
         `;
     }
     
     // Conversas salvas
-    appState.savedChats.slice(-5).reverse().forEach(chat => {
-        const date = new Date(chat.timestamp).toLocaleDateString();
-        const time = new Date(chat.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    appState.savedChats.slice(-8).reverse().forEach(chat => {
+        const date = new Date(chat.timestamp);
+        const now = new Date();
+        const diffTime = Math.abs(now - date);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        let dateLabel = '';
+        if (diffDays === 1) {
+            dateLabel = 'Ontem';
+        } else if (diffDays <= 7) {
+            dateLabel = `${diffDays} dias atrás`;
+        } else {
+            dateLabel = date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+        }
+        
+        const time = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         const preview = chat.title;
         
         historyHTML += `
             <div class="history-item" data-chat-id="${chat.id}">
-                <div class="history-date">${date === new Date().toLocaleDateString() ? 'Hoje' : date}</div>
+                <div class="history-item-header">
+                    <div class="history-date">${dateLabel}</div>
+                    <div class="history-time">${time}</div>
+                </div>
                 <div class="history-preview">${escapeHtml(preview)}</div>
                 <div class="history-meta">
-                    <span class="history-time">${time}</span>
-                    <span class="history-count">${chat.messages.length} msgs</span>
+                    <div class="history-count">${chat.messages.length} mensagens</div>
                 </div>
             </div>
         `;
@@ -1434,4 +2244,3 @@ confirmBtn.onclick = () => {
         if (e.target === overlay) overlay.remove();
     });
 }
-
