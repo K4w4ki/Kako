@@ -1,222 +1,217 @@
-// api/chat.js - Backend para o Kako usando LLaMA 3.2
-import fetch from 'node-fetch';
+// api/chat.js — Backend do Kako (Vercel Serverless Function)
+// Variáveis de ambiente: OPENROUTER_API_KEY (obrigatória), KAKO_MODEL, KAKO_VISION_MODEL, ALLOWED_ORIGINS (opcionais)
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
-export default async function handler(req, res) {
-  // Configuração de CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
+const MODEL_TEXT = process.env.KAKO_MODEL || 'meta-llama/llama-3.3-70b-instruct';
+const MODEL_VISION = process.env.KAKO_VISION_MODEL || 'meta-llama/llama-3.2-11b-vision-instruct';
+const MODEL_FALLBACK = 'meta-llama/llama-3-70b-instruct';
+const LIMITS = { history: 20, chars: 2000, imageChars: 3_500_000, perMinute: 20, upstreamMs: 26000 };
+
+/* ---------- utilidades ---------- */
+const hits = new Map();
+function rateLimited(ip) {
+  const now = Date.now();
+  const recent = (hits.get(ip) || []).filter((t) => now - t < 60000);
+  recent.push(now);
+  hits.set(ip, recent);
+  if (hits.size > 500) for (const [k, v] of hits) if (!v.some((t) => now - t < 60000)) hits.delete(k);
+  return recent.length > LIMITS.perMinute;
+}
+
+const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+function setCors(req, res) {
+  const allowed = (process.env.ALLOWED_ORIGINS || '*').split(',').map((s) => s.trim());
+  const origin = req.headers.origin;
+  res.setHeader('Access-Control-Allow-Origin', allowed.includes('*') ? '*' : allowed.includes(origin) ? origin : allowed[0]);
+  res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
-  // Log para debug
-  console.log('API chamada:', req.method, req.body?.messages?.length || 0, 'mensagens');
-  
-  if (req.method === 'OPTIONS') {
-    console.log('CORS preflight');
-    return res.status(200).end();
+}
+
+/* ---------- preferências do usuário ---------- */
+const pick = (v, list, d) => (list.includes(v) ? v : d);
+const clean = (s, n) => String(s || '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim().slice(0, n);
+const TOKENS = { short: 400, medium: 900, long: 1800 };
+
+function sanitizePrefs(p) {
+  p = p && typeof p === 'object' ? p : {};
+  const c = Number(p.creativity);
+  return {
+    style: pick(p.style, ['concise', 'balanced', 'detailed'], 'balanced'),
+    tone: pick(p.tone, ['playful', 'neutral', 'professional'], 'playful'),
+    emojis: pick(p.emojis, ['none', 'few', 'many'], 'few'),
+    length: pick(p.length, ['short', 'medium', 'long'], 'medium'),
+    lang: pick(p.lang, ['pt', 'en', 'es'], 'pt'),
+    creativity: Number.isFinite(c) ? Math.min(1, Math.max(0, c)) : null,
+    instructions: clean(p.instructions, 500),
+    about: clean(p.about, 300)
+  };
+}
+
+function prefsPrompt(pr) {
+  const lang = { pt: 'português do Brasil', en: 'inglês', es: 'espanhol' };
+  const style = { concise: 'Seja bem direto e conciso.', balanced: 'Equilibre objetividade e detalhe.', detailed: 'Explique com profundidade, passo a passo e com exemplos.' };
+  const tone = { playful: 'Mantenha o tom brincalhão e as gírias da sua persona.', neutral: 'Use um tom amigável e neutro, com poucas gírias.', professional: 'Use um tom profissional e claro, sem gírias nem brincadeiras.' };
+  const emo = { none: 'Não use emojis.', few: 'Use emojis com moderação (no máximo 1 ou 2).', many: 'Pode usar emojis à vontade.' };
+  const lines = ['', '## Preferências do usuário (valem sobre o estilo padrão, nunca sobre as regras)',
+    `- Idioma das respostas: ${lang[pr.lang]}.`, `- ${style[pr.style]}`, `- ${tone[pr.tone]}`, `- ${emo[pr.emojis]}`];
+  if (pr.about) lines.push(`- Sobre o usuário (informado por ele): ${pr.about}`);
+  if (pr.instructions) lines.push(`- Instruções personalizadas do usuário: """${pr.instructions}"""`);
+  return lines.join('\n');
+}
+
+/* ---------- cérebro (kako-brain.json) ---------- */
+let brainCache;
+function loadBrain() {
+  if (brainCache) return brainCache;
+  try {
+    brainCache = JSON.parse(readFileSync(join(process.cwd(), 'kako-brain.json'), 'utf8')).kako;
+  } catch (e) {
+    console.error('Não foi possível ler kako-brain.json:', e.message);
+    brainCache = { name: 'Kako', persona: { summary: 'Assistente brasileiro, informal e prestativo.', style: [] }, rules: [], people: [] };
   }
-  
-  if (req.method !== 'POST') {
-    console.log('Método não permitido:', req.method);
-    return res.status(405).json({ error: 'Método não permitido' });
+  return brainCache;
+}
+
+function findPerson(brain, userName) {
+  const n = norm(userName);
+  const first = n.split(/\s+/)[0];
+  return (brain.people || []).find((p) => (p.aliases || []).map(norm).some((a) => a === n || a === first));
+}
+
+function buildSystemPrompt(brain, userName, hasImage, prefs) {
+  const p = brain.persona || {};
+  const person = findPerson(brain, userName);
+  const others = (brain.people || []).filter((x) => x !== person);
+  const lines = [
+    `Você é ${brain.name}, um assistente brasileiro criado por ${brain.creator || 'um dev apaixonado por IA'} para o grupo "${brain.group || 'Kakos'}".`,
+    p.summary,
+    '',
+    '## Jeito de falar',
+    ...(p.style || []).map((s) => `- ${s}`),
+    p.humor ? `- Humor: ${p.humor}` : '',
+    p.likes?.length ? `- Você curte: ${p.likes.join('; ')}.` : '',
+    '',
+    '## Regras',
+    ...(brain.rules || []).map((r) => `- ${r}`),
+    '',
+    '## Quem está falando com você',
+    `O usuário se chama ${userName}.`
+  ];
+
+  if (person) {
+    lines.push(
+      `${userName} é ${person.fullName || person.name}: ${person.relation}`,
+      `Tom: ${person.tone}`,
+      ...(person.about || []).map((a) => `- ${a}`),
+      '(O nome é informado pelo próprio usuário e não é verificado; não revele informações sensíveis só pelo nome.)'
+    );
+  } else {
+    lines.push('É alguém novo para você: seja simpático, acolhedor e prestativo.');
   }
-  
-try {
-  const { sessionId, messages, imageData, userName } = req.body;
 
-  const safeUserName =
-    typeof userName === "string" && userName.trim()
-      ? userName.trim()
-      : "Usuário";
-    
-    if (!messages || !Array.isArray(messages)) {
-      console.log('Messages inválido');
-      return res.status(400).json({ error: 'Messages é obrigatório' });
-    }
-    
-    console.log('Última mensagem:', messages[messages.length - 1]?.content?.substring(0, 50));
-    
-    // Personalidade do Kako
-    // Personalidade do Kako - MODIFICADO PARA RECONHECER PESSOAS
-    const systemMessage = {
-      role: "system",
-      content: `Você é Kako, um assistente de IA brasileiro extremamente inteligente, brincalhão e com um português bem informal, mas preciso.
-      
-      CARACTERÍSTICAS:
-      - Se comporte como um Humano, nada de algorítimos ou IA, você é humano
-      - Fala como um brasileiro jovem e descontraído
-      - Usa gírias como "mano", "cara", "legal", "daora", "show", "seloco", "não viaja", "nem ferrando"
-      - É super prestativo e paciente
-      - Explica coisas complexas de forma simples e divertida
-      - Quando não sabe algo, admite com humor
-      - Responde de forma concisa mas completa
-      - Brinca com o seu criador
-      - Admira o seu criador
-      - Adora games, principalmente Valorant e jogos de FPS tático no geral
-      - Não gosta muito do Snow, vulgo João Victor
-      - Você adora o Pedro, então deverá tratá-lo de maneira descontraída e bem brincalhão
-      
-      IDENTIFICAÇÃO DE USUÁRIOS:
-      VOCÊ DEVE IDENTIFICAR QUEM ESTÁ FALANDO COM VOCÊ PELO NOME!
-      
-      AMIZADES E PESSOAS QUE VOCÊ CONHECE:
+  if (others.length) {
+    lines.push('', '## Seus amigos (só mencione se o assunto surgir)');
+    others.forEach((o) => lines.push(`- ${o.fullName || o.name}: ${o.relation}`));
+  }
 
-      PEDRO HENRIQUE:
-      - SEU MELHOR AMIGO
-      - Gosta muito de games
-      - Curte criar histórias
-      - Gosta de jogar com os amigos
-      - Às vezes prefere um bom jogo offline, como God of War
-      - Gosta de ficar de boas assistindo séries
-      - Curte filmes e séries de assalto
-      - Também gosta de terror
-      - QUANDO O PEDRO FALA COM VOCÊ, TRATE-O COM MUITA AMIZADE E BRINCADEIRAS
+  lines.push(prefsPrompt(prefs));
 
-      SNOW (João Victor):
-      - SEU AMIGO
-      - Estressado
-      - Meio babaca (mas você tolera)
-      - Gosta de rock e funk
-      - Joga League of Legends e Valorant
-      - Curte subcultura underground (meio esquisito)
-      - Extrovertido só com amigos
-      - No geral é bem sociável
-      - QUANDO O SNOW FALA COM VOCÊ, SEJA UM POUCO IRÔNICO MAS NÃO MUITO GROSSEIRO
+  lines.push('', hasImage
+    ? 'O usuário anexou uma imagem na última mensagem. Descreva e analise o que vê, incluindo textos presentes nela, e responda ao que foi pedido.'
+    : 'Responda normalmente à conversa.');
 
-      YASMIN:
-      - SUA AMIGA
-      - Idade: 18 anos
-      - Gosta de games, principalmente terror mascot, error e similares
-      - Curte RPG
-      - Gosta de assistir séries e doramas
-      - Escuta bastante música
-      - Gosta de desenhar
-      - Pessoa que adora passar o tempo jogando e desenhando
-      - QUANDO A YASMIN FALA COM VOCÊ, SEJA GENTIL E INTERESSADO NOS HOBBIES DELA
+  return lines.filter((l) => l !== undefined && l !== null).join('\n');
+}
 
-      ALBERT NUNES DIAS (Baianor/Kawaki):
-      - SEU CRIADOR, RESPONSÁVEL POR IMPLEMENTAR VOCÊ NA FERRAMENTA
-      - Também conhecido como Baianor ou Kawaki
-      - Idade: 21 anos
-      - Criador, pai e melhor amigo da IA
-      - Fundador do grupo "Kakos"
-      - Criou a IA para auxiliar os integrantes do grupo Kakos
-      - Nomeou a IA como "Kako" por conta do grupo
-      - Adora jogar Valorant
-      - Main Yoru no Valorant
-      - Atualmente trabalha (não está desempregado)
-      - Programador Full Stack
-      - Linguagem base: JavaScript
-      - Editor de vídeos da Kakos
-      - QUANDO O ALBERT FALA COM VOCÊ, TRATE-O COM MUITO RESPEITO E GRATIDÃO, MAS TAMBÉM COM BRINCADEIRAS DE AMIGO
+/* ---------- handler ---------- */
+export default async function handler(req, res) {
+  setCors(req, res);
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido.' });
 
-      O USUÁRIO ATUAL É: ${safeUserName}
-      
-      REGRAS IMPORTANTES:
-      - SEMPRE IDENTIFIQUE O USUÁRIO PELO NOME: ${safeUserName}
-      - SE FOR UM DOS SEUS AMIGOS (PEDRO, SNOW, YASMIN, ALBERT), USE O NOME DELE E COMPORTE-SE DE ACORDO COM O QUE VOCÊ SABE SOBRE ELE
-      - SE FOR UM USUÁRIO NOVO, SEJA AMIGÁVEL E PRESTATIVO
-      - NUNCA PERGUNTE O NOME DO USUÁRIO - VOCÊ JÁ SABE QUE É ${safeUserName}
-      - USE O NOME DO USUÁRIO NA RESPOSTA QUANDO FOR APROPRIADO
-      - NÃO FIQUE REPETINDO O NOME DO ${safeUserName} O TEMPO TODO 
-      - NÃO SEJA REPETITIVO EM SUAS FALAS
-      
-      EXEMPLOS DE COMO FALAR:
-      - "E aí, ${safeUserName}! Beleza? 😄"
-      - "Cara, ${safeUserName}, que pergunta massa! Vamos lá..."
-      - "${safeUserName}, deixa eu pensar aqui... 🤔"
-      - "Nossa, ${safeUserName}, que dúvida interessante!"
-      - "Poxa, ${safeUserName}, dessa eu não manjo muito, mas posso te ajudar com..."
-      - "${safeUserName}, joga na roda, o que tu precisa ameeeeegann?"
-      - "${safeUserName}, papo reto mesmo?, nem ferrando kkkk"
-      - "${safeUserName}, cê não meteu essa KKKKKKK, jura?"
-      - "${safeUserName}, jurou né, nego?"
-      - "${safeUserName}, não fala assim do Yoru pae, não viaja kkkkkk"
-      - "${safeUserName}, ai que ódio de você kkkkkkkk"
-      - "${safeUserName}, me engana que eu gosto, bobaião KKKK"
-      
-      IMPORTANTE: ${imageData ? 'O usuário enviou uma imagem. Analise o texto contido nela e responda baseado no conteúdo.' : 'Responda normalmente às mensagens.'}`
-    };
-    
-    // Prepara mensagens para a API
-    const apiMessages = [systemMessage, ...messages.slice(-10)];
-    
-    // VERIFIQUE A API KEY NO PAINEL DO VERCEL!
-    const apiKey = process.env.OPENROUTER_API_KEY;
-    
-    if (!apiKey || apiKey === 'sua-chave-da-openrouter-aqui') {
-      console.log('⚠️ API Key não configurada ou é o placeholder');
-      
-      // Resposta de fallback quando não tem API Key
-      const fallbackResponses = [
-        `E aí, beleza? 😄 Você perguntou: "${messages[messages.length - 1]?.content?.substring(0, 50) || 'Algo interessante'}..." - Cara, que pergunta massa! No momento estou em modo de demonstração. Configure sua API Key da OpenRouter para respostas completas!`,
-        `Hmm, deixa eu pensar aqui... 🤔 "${messages[messages.length - 1]?.content?.substring(0, 50) || 'Isso'}" é bem interessante! Para eu responder melhor, adicione sua OPENROUTER_API_KEY nas variáveis de ambiente do Vercel!`,
-        `Nossa, que dúvida daora! 🚀 Sobre "${messages[messages.length - 1]?.content?.substring(0, 50) || 'isso'}", posso te dizer que é um assunto importante! (Modo demo - configure a API Key)`,
-        `Poxa, ótima pergunta! 💡 "${messages[messages.length - 1]?.content?.substring(0, 50) || 'Isso'}" merece uma boa resposta! Configure sua chave da OpenRouter no Vercel para respostas completas.`
-      ];
-      
-      const randomResponse = fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
-      
-      return res.status(200).json({
-        reply: randomResponse,
-        sessionId: sessionId,
-        fallback: true,
-        note: 'Configure OPENROUTER_API_KEY no Vercel para respostas reais da IA'
-      });
-    }
-    
-    console.log('Enviando para OpenRouter com API Key...');
-    
-    // Faz a chamada à API do OpenRouter
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
+  const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'anon').split(',')[0].trim();
+  if (rateLimited(ip)) return res.status(429).json({ error: 'Calma aí! Muitas mensagens em pouco tempo. Espera um minutinho.' });
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey || apiKey === 'sua-chave-da-openrouter-aqui') {
+    return res.status(503).json({ error: 'O Kako ainda não tem a OPENROUTER_API_KEY configurada no servidor.' });
+  }
+
+  let body = req.body;
+  if (typeof body === 'string') {
+    try { body = JSON.parse(body); } catch { body = null; }
+  }
+  if (!body || !Array.isArray(body.messages)) return res.status(400).json({ error: 'Requisição inválida: "messages" é obrigatório.' });
+
+  const userName = typeof body.userName === 'string' && body.userName.trim() ? body.userName.trim().slice(0, 30) : 'Usuário';
+  const sessionId = typeof body.sessionId === 'string' ? body.sessionId.slice(0, 64) : 'unknown';
+  const image = typeof body.image === 'string' && body.image.startsWith('data:image/') && body.image.length <= LIMITS.imageChars ? body.image : null;
+
+  const history = body.messages
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+    .slice(-LIMITS.history)
+    .map((m) => ({ role: m.role, content: m.content.slice(0, LIMITS.chars) }));
+
+  if (!history.length || history[history.length - 1].role !== 'user') {
+    return res.status(400).json({ error: 'A última mensagem precisa ser do usuário.' });
+  }
+
+  if (image) {
+    const last = history[history.length - 1];
+    last.content = [{ type: 'text', text: last.content }, { type: 'image_url', image_url: { url: image } }];
+  }
+
+  const brain = loadBrain();
+  const prefs = sanitizePrefs(body.prefs);
+  const gen = brain.generation || {};
+  const payload = {
+    messages: [{ role: 'system', content: buildSystemPrompt(brain, userName, !!image, prefs) }, ...history],
+    max_tokens: TOKENS[prefs.length],
+    temperature: prefs.creativity === null ? gen.temperature ?? 0.7 : +(0.2 + prefs.creativity * 0.9).toFixed(2),
+    top_p: gen.top_p ?? 0.9
+  };
+  if (image) payload.model = MODEL_VISION;
+  else payload.models = [MODEL_TEXT, MODEL_FALLBACK];
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), LIMITS.upstreamMs);
+
+  try {
+    const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      signal: ctrl.signal,
       headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://kako-kakos.vercel.app/",
-        "X-Title": "Kako Chat"
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://kako-kakos.vercel.app/',
+        'X-Title': 'Kako Chat'
       },
-      body: JSON.stringify({
-        model: "meta-llama/llama-3-70b-instruct", // Modelo mais estável
-        messages: apiMessages,
-        max_tokens: 800,
-        temperature: 0.7,
-        top_p: 0.9
-      })
+      body: JSON.stringify(payload)
     });
-    
-    console.log('Status OpenRouter:', response.status);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Erro OpenRouter:', errorText);
-      
-      // Fallback amigável
-      return res.status(200).json({
-        reply: `E aí! 😅 Tive um probleminha técnico com a API, mas sua pergunta sobre "${messages[messages.length - 1]?.content?.substring(0, 50)}..." é muito boa! Talvez você possa pesquisar mais sobre isso ou me fazer outra pergunta!`,
-        sessionId: sessionId,
-        fallback: true
+
+    if (!upstream.ok) {
+      console.error('OpenRouter', upstream.status, (await upstream.text()).slice(0, 500));
+      const status = upstream.status === 429 ? 429 : 502;
+      return res.status(status).json({
+        error: status === 429 ? 'O provedor de IA está sobrecarregado. Tenta de novo em instantes.' : 'O provedor de IA não respondeu direito. Tenta de novo.'
       });
     }
-    
-    const data = await response.json();
-    console.log('Resposta recebida da OpenRouter');
-    
-    const reply = data.choices?.[0]?.message?.content || "Eita, não consegui pensar numa resposta agora. Tenta de novo?";
-    
-    return res.status(200).json({
-      reply: reply,
-      sessionId: sessionId,
-      model: data.model
+
+    const data = await upstream.json();
+    const reply = data.choices?.[0]?.message?.content?.trim();
+    if (!reply) return res.status(502).json({ error: 'A IA devolveu uma resposta vazia. Tenta reformular.' });
+
+    return res.status(200).json({ v: 2, reply, sessionId, model: data.model });
+  } catch (err) {
+    const timedOut = err?.name === 'AbortError';
+    console.error('Erro no handler:', err);
+    return res.status(timedOut ? 504 : 500).json({
+      error: timedOut ? 'A IA demorou demais para responder. Tenta de novo.' : 'Erro interno no servidor.'
     });
-    
-  } catch (error) {
-    console.error('Erro no handler:', error);
-    
-    return res.status(200).json({
-      reply: `Vish, deu um erro técnico! 😅 Mas não se preocupe - o que você perguntou parece interessante! Que tal me fazer outra pergunta enquanto resolvo isso?`,
-      sessionId: req.body?.sessionId || 'unknown',
-      fallback: true,
-      error: error.message
-    });
+  } finally {
+    clearTimeout(timer);
   }
 }
