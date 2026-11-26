@@ -191,7 +191,7 @@ export default async function handler(req, res) {
     temperature: prefs.creativity === null ? gen.temperature ?? 0.7 : +(0.2 + prefs.creativity * 0.9).toFixed(2),
     top_p: gen.top_p ?? 0.9
   };
-  const models = image ? [MODEL_VISION] : [...new Set([MODEL_TEXT, MODEL_FALLBACK, 'meta-llama/llama-3.3-70b-instruct:free'])];
+  const models = image ? [MODEL_VISION] : [...new Set([MODEL_TEXT, MODEL_FALLBACK])];
   const WHY = {
     401: 'A chave da OpenRouter é inválida ou foi revogada. Confira OPENROUTER_API_KEY na Vercel.',
     402: 'A conta da OpenRouter está sem créditos.',
@@ -202,7 +202,8 @@ export default async function handler(req, res) {
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), LIMITS.upstreamMs);
-  let fail = { status: 502, detail: '' };
+  let fail = { status: 0, detail: '' };
+  const rank = (c) => ({ 401: 5, 402: 4, 403: 3, 429: 2, 404: 0 }[c] ?? 1); // qual erro explica melhor a falha
   const shrunk = new Set();
 
   try {
@@ -223,7 +224,7 @@ export default async function handler(req, res) {
         const data = await upstream.json().catch(() => ({}));
         const reply = data.choices?.[0]?.message?.content?.trim();
         if (reply) return res.status(200).json({ v: 2, reply, sessionId, model: data.model || model, truncated: data.choices?.[0]?.finish_reason === 'length' });
-        fail = { status: 502, detail: 'resposta vazia' };
+        if (!fail.status) fail = { status: 502, detail: 'resposta vazia' };
         continue; // tenta o próximo modelo
       }
 
@@ -231,7 +232,7 @@ export default async function handler(req, res) {
       let detail = '';
       try { const j = JSON.parse(raw); detail = String(j.error?.message || j.error || '').slice(0, 140); } catch { detail = raw.slice(0, 140); }
       console.error('OpenRouter', model, upstream.status, raw.slice(0, 500));
-      fail = { status: upstream.status, detail };
+      if (!fail.status || rank(upstream.status) > rank(fail.status)) fail = { status: upstream.status, detail };
       if (upstream.status === 402) {
         // saldo baixo: a OpenRouter informa quantos tokens a conta aguenta; tenta de novo com esse limite
         const afford = Math.floor(+(raw.match(/can only afford (\d+)/i)?.[1] || 0) * 0.9);
@@ -246,6 +247,7 @@ export default async function handler(req, res) {
       if ([401, 403].includes(upstream.status)) break; // trocar de modelo não resolve
     }
 
+    if (!fail.status) fail.status = 502;
     const base = WHY[fail.status] || 'O provedor de IA não respondeu direito. Tenta de novo.';
     return res.status(fail.status === 429 ? 429 : 502).json({ error: fail.detail && fail.status !== 429 ? `${base} (${fail.detail})` : base });
   } catch (err) {
