@@ -6,7 +6,7 @@
 const LOCAL = ['localhost', '127.0.0.1', ''].includes(location.hostname) || location.protocol === 'file:';
 const API_URL = LOCAL ? 'https://kako-kakos.vercel.app/api/chat' : '/api/chat';
 const AVATAR = 'image/kako-profile.png';
-const MAX_LEN = 2000;
+const MAX_LEN = 12000;
 const ACCENTS = { orange: '#ff6a1a', yellow: '#f3f23c', pink: '#ff4d8d', blue: '#4da3ff', green: '#3ddc84' };
 const ACCENT_NAMES = { orange: 'Laranja', yellow: 'Amarelo', pink: 'Rosa', blue: 'Azul', green: 'Verde' };
 const BANNERS = {
@@ -20,7 +20,7 @@ const DEFAULTS = {
   enterToSend: true, autoScroll: true, markdown: true, timestamps: true, spellcheck: true,
   sound: true, volume: 60, notify: false, history: true, retention: 0, typingSpeed: 90, context: 12,
   reduceMotion: false, highContrast: false, textSpacing: false,
-  aiStyle: 'balanced', aiTone: 'playful', aiEmojis: 'few', aiLength: 'medium', aiCreativity: 55, aiLang: 'pt', aiInstructions: '', aiAbout: ''
+  aiStyle: 'balanced', aiTone: 'playful', aiEmojis: 'few', aiLength: 'long', aiCreativity: 55, aiLang: 'pt', aiInstructions: '', aiAbout: ''
 };
 const PROMPTS = [
   { i: 'fa-lightbulb', t: 'Explica rapidinho', p: 'Me explica o que é inteligência artificial de forma simples' },
@@ -341,7 +341,7 @@ function msgHtml(m) {
 <div class="acts">${time}<button data-act="copy-msg" aria-label="Copiar"><i class="fa-regular fa-copy"></i></button><button data-act="edit" aria-label="Editar"><i class="fa-regular fa-pen-to-square"></i></button></div></article>`;
   }
   return `<article class="msg ai" data-id="${m.id}"><img src="${AVATAR}" alt=""><div class="col"><div class="who">Kako ${time}</div><div class="msg-body">${md(m.content)}</div>
-<div class="acts"><button data-act="copy-msg" aria-label="Copiar"><i class="fa-regular fa-copy"></i></button><button data-act="like" aria-label="Gostei"><i class="fa-regular fa-thumbs-up"></i></button><button data-act="regen" aria-label="Gerar de novo"><i class="fa-solid fa-rotate"></i></button></div></div></article>`;
+<div class="acts"><button data-act="copy-msg" aria-label="Copiar"><i class="fa-regular fa-copy"></i></button><button data-act="like" aria-label="Gostei"><i class="fa-regular fa-thumbs-up"></i></button><button data-act="regen" aria-label="Gerar de novo"><i class="fa-solid fa-rotate"></i></button>${m.cut ? '<button class="cont" data-act="continue"><i class="fa-solid fa-forward"></i> Continuar resposta</button>' : ''}</div></div></article>`;
 }
 
 /* ================= Render ================= */
@@ -407,8 +407,8 @@ function autosize() {
   const i = $('#input'); if (!i) return;
   i.style.height = 'auto'; i.style.height = Math.min(i.scrollHeight, 180) + 'px';
   const n = i.value.length, c = $('#count');
-  c.textContent = n > 1500 ? `${n}/${MAX_LEN}` : '';
-  c.className = n > 1900 ? 'bad' : n > 1500 ? 'warn' : '';
+  c.textContent = n > MAX_LEN * 0.75 ? `${n}/${MAX_LEN}` : '';
+  c.className = n > MAX_LEN * 0.95 ? 'bad' : n > MAX_LEN * 0.75 ? 'warn' : '';
   c.id = 'count';
 }
 function setImage(data) {
@@ -459,7 +459,9 @@ async function reply(image) {
     if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);
     if (data.v !== 2) throw new Error('O servidor ainda está com o chat.js antigo (ele responde 200 até em erro). Endereço chamado: ' + API_URL + '. Publique o novo em api/chat.js, faça redeploy e confira a OPENROUTER_API_KEY.');
     showTyping(false);
-    const m = { id: uid(), role: 'assistant', content: String(data.reply || '').trim() || 'Fiquei sem palavras. Tenta de novo?', t: Date.now() };
+    let text = String(data.reply || '').trim() || 'Fiquei sem palavras. Tenta de novo?';
+    if (data.truncated) { if ((text.match(/\*\*/g) || []).length % 2) text = text.replace(/\*\*[^*]*$/, '').trim(); text += ' …'; }
+    const m = { id: uid(), role: 'assistant', content: text, t: Date.now(), cut: !!data.truncated };
     chat.messages.push(m); chat.updated = Date.now(); saveChats();
     $('#thread').insertAdjacentHTML('beforeend', msgHtml(m));
     const node = $('#thread').lastElementChild;
@@ -572,7 +574,7 @@ const VIEWS = {
   },
   ai: () =>
     grp('Estilo das respostas',
-      rowc('Tamanho', 'Limite de extensão de cada resposta', seg('aiLength', [['short', 'Curtas'], ['medium', 'Médias'], ['long', 'Longas']])) +
+      rowc('Tamanho', 'Limite de extensão de cada resposta', seg('aiLength', [['short', 'Curtas'], ['medium', 'Médias'], ['long', 'Longas'], ['max', 'Máximas']])) +
       rowc('Nível de detalhe', 'Quanto o Kako se aprofunda', seg('aiStyle', [['concise', 'Direto'], ['balanced', 'Equilibrado'], ['detailed', 'Detalhado']])) +
       rowc('Tom de voz', 'Personalidade das respostas', sel('aiTone', [['playful', 'Brincalhão'], ['neutral', 'Neutro'], ['professional', 'Profissional']], 'Tom')) +
       rowc('Emojis', 'Frequência de emojis', seg('aiEmojis', [['none', 'Nenhum'], ['few', 'Poucos'], ['many', 'Muitos']])) +
@@ -675,6 +677,7 @@ const ACTIONS = {
     const on = document.body.classList.toggle('focus'); document.body.classList.remove('nav-open');
     if (on) toast('Modo foco ligado. Esc para sair.', 'info'); $('#input')?.focus();
   },
+  continue: (el) => { const m = getMsg(el); if (m) { m.cut = false; saveChats(); } submit('Continue de onde parou, sem repetir o que já disse.'); },
   quick: (el) => { const i = $('#input'); i.value = el.dataset.p; autosize(); i.focus(); i.setSelectionRange(i.value.length, i.value.length); },
   'to-bottom': () => scrollDown(true),
   'toggle-nav': () => document.body.classList.toggle('nav-open'),
@@ -734,9 +737,10 @@ const ACTIONS = {
     out.className = 'pill'; out.textContent = 'Testando…';
     const t0 = performance.now();
     try {
-      const r = await fetch(API_URL, { method: 'OPTIONS' });
-      out.className = 'pill ' + (r.ok ? 'ok' : 'bad');
-      out.textContent = r.ok ? `Online · ${Math.round(performance.now() - t0)} ms` : `Servidor respondeu ${r.status}`;
+      const r = await fetch(API_URL), d = await r.json().catch(() => ({}));
+      const ok = r.ok && d.keySet && !d.problem;
+      out.className = 'pill ' + (ok ? 'ok' : 'bad');
+      out.textContent = ok ? `Online · ${Math.round(performance.now() - t0)} ms` : (d.problem || `Servidor respondeu ${r.status}`);
     } catch { out.className = 'pill bad'; out.textContent = 'Sem conexão com o servidor'; }
   },
   'export-all': () => {

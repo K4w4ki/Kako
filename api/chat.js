@@ -6,7 +6,7 @@ import { join } from 'node:path';
 const MODEL_TEXT = process.env.KAKO_MODEL || 'meta-llama/llama-3.3-70b-instruct';
 const MODEL_VISION = process.env.KAKO_VISION_MODEL || 'meta-llama/llama-3.2-11b-vision-instruct';
 const MODEL_FALLBACK = 'meta-llama/llama-3-70b-instruct';
-const LIMITS = { history: 20, chars: 2000, imageChars: 3_500_000, perMinute: 20, upstreamMs: 26000 };
+const LIMITS = { history: 20, chars: 12000, imageChars: 3_500_000, perMinute: 20, upstreamMs: 26000 };
 
 /* ---------- utilidades ---------- */
 const hits = new Map();
@@ -33,7 +33,7 @@ function setCors(req, res) {
 /* ---------- preferências do usuário ---------- */
 const pick = (v, list, d) => (list.includes(v) ? v : d);
 const clean = (s, n) => String(s || '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim().slice(0, n);
-const TOKENS = { short: 400, medium: 900, long: 1800 };
+const TOKENS = { short: 600, medium: 2048, long: 4096, max: 8192 };
 
 function sanitizePrefs(p) {
   p = p && typeof p === 'object' ? p : {};
@@ -42,7 +42,7 @@ function sanitizePrefs(p) {
     style: pick(p.style, ['concise', 'balanced', 'detailed'], 'balanced'),
     tone: pick(p.tone, ['playful', 'neutral', 'professional'], 'playful'),
     emojis: pick(p.emojis, ['none', 'few', 'many'], 'few'),
-    length: pick(p.length, ['short', 'medium', 'long'], 'medium'),
+    length: pick(p.length, ['short', 'medium', 'long', 'max'], 'long'),
     lang: pick(p.lang, ['pt', 'en', 'es'], 'pt'),
     creativity: Number.isFinite(c) ? Math.min(1, Math.max(0, c)) : null,
     instructions: clean(p.instructions, 500),
@@ -222,7 +222,7 @@ export default async function handler(req, res) {
       if (upstream.ok) {
         const data = await upstream.json().catch(() => ({}));
         const reply = data.choices?.[0]?.message?.content?.trim();
-        if (reply) return res.status(200).json({ v: 2, reply, sessionId, model: data.model || model });
+        if (reply) return res.status(200).json({ v: 2, reply, sessionId, model: data.model || model, truncated: data.choices?.[0]?.finish_reason === 'length' });
         fail = { status: 502, detail: 'resposta vazia' };
         continue; // tenta o próximo modelo
       }
@@ -238,6 +238,7 @@ export default async function handler(req, res) {
         if (afford >= 80 && !shrunk.has(model)) {
           shrunk.add(model);
           payload.max_tokens = Math.min(payload.max_tokens, afford);
+          payload.messages[0].content += `\n\n## Limite temporário\nVocê só tem espaço para cerca de ${Math.max(40, Math.floor(afford * 0.55))} palavras nesta resposta. Seja bem conciso e termine a resposta por completo, sem deixar frases ou listas pela metade.`;
           models.splice(models.indexOf(model) + 1, 0, model);
         }
         continue; // senão, o próximo da lista (inclui um modelo gratuito)
