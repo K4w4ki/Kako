@@ -26,7 +26,7 @@ function setCors(req, res) {
   const origin = req.headers.origin;
   res.setHeader('Access-Control-Allow-Origin', allowed.includes('*') ? '*' : allowed.includes(origin) ? origin : allowed[0]);
   res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
@@ -126,10 +126,28 @@ function buildSystemPrompt(brain, userName, hasImage, prefs) {
   return lines.filter((l) => l !== undefined && l !== null).join('\n');
 }
 
+/* ---------- diagnóstico (GET /api/chat) ---------- */
+async function diagnose(res) {
+  const key = process.env.OPENROUTER_API_KEY;
+  const out = { keySet: !!key && key !== 'sua-chave-da-openrouter-aqui', models: [MODEL_TEXT, MODEL_FALLBACK, MODEL_VISION] };
+  if (!out.keySet) return res.status(200).json({ ...out, problem: 'OPENROUTER_API_KEY não está configurada na Vercel.' });
+  try {
+    const r = await fetch('https://openrouter.ai/api/v1/auth/key', { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(8000) });
+    out.keyValid = r.ok;
+    if (!r.ok) out.problem = r.status === 401 ? 'A chave da OpenRouter é inválida ou foi revogada.' : `A OpenRouter respondeu ${r.status} ao validar a chave.`;
+    else {
+      const left = (await r.json().catch(() => ({}))).data?.limit_remaining;
+      if (typeof left === 'number' && left <= 0) out.problem = 'A chave atingiu o limite de créditos.';
+    }
+  } catch (e) { out.problem = 'Não consegui falar com a OpenRouter: ' + (e?.message || e); }
+  return res.status(200).json(out);
+}
+
 /* ---------- handler ---------- */
 export default async function handler(req, res) {
   setCors(req, res);
   if (req.method === 'OPTIONS') return res.status(204).end();
+  if (req.method === 'GET') return diagnose(res);
   if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido.' });
 
   const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'anon').split(',')[0].trim();
@@ -173,7 +191,7 @@ export default async function handler(req, res) {
     temperature: prefs.creativity === null ? gen.temperature ?? 0.7 : +(0.2 + prefs.creativity * 0.9).toFixed(2),
     top_p: gen.top_p ?? 0.9
   };
-  const models = image ? [MODEL_VISION] : [...new Set([MODEL_TEXT, MODEL_FALLBACK, 'meta-llama/llama-3.1-70b-instruct'])];
+  const models = image ? [MODEL_VISION] : [...new Set([MODEL_TEXT, MODEL_FALLBACK, 'meta-llama/llama-3.3-70b-instruct:free'])];
   const WHY = {
     401: 'A chave da OpenRouter é inválida ou foi revogada. Confira OPENROUTER_API_KEY na Vercel.',
     402: 'A conta da OpenRouter está sem créditos.',
@@ -185,6 +203,7 @@ export default async function handler(req, res) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), LIMITS.upstreamMs);
   let fail = { status: 502, detail: '' };
+  const shrunk = new Set();
 
   try {
     for (const model of models) {
@@ -213,7 +232,17 @@ export default async function handler(req, res) {
       try { const j = JSON.parse(raw); detail = String(j.error?.message || j.error || '').slice(0, 140); } catch { detail = raw.slice(0, 140); }
       console.error('OpenRouter', model, upstream.status, raw.slice(0, 500));
       fail = { status: upstream.status, detail };
-      if ([401, 402, 403].includes(upstream.status)) break; // trocar de modelo não resolve
+      if (upstream.status === 402) {
+        // saldo baixo: a OpenRouter informa quantos tokens a conta aguenta; tenta de novo com esse limite
+        const afford = Math.floor(+(raw.match(/can only afford (\d+)/i)?.[1] || 0) * 0.9);
+        if (afford >= 80 && !shrunk.has(model)) {
+          shrunk.add(model);
+          payload.max_tokens = Math.min(payload.max_tokens, afford);
+          models.splice(models.indexOf(model) + 1, 0, model);
+        }
+        continue; // senão, o próximo da lista (inclui um modelo gratuito)
+      }
+      if ([401, 403].includes(upstream.status)) break; // trocar de modelo não resolve
     }
 
     const base = WHY[fail.status] || 'O provedor de IA não respondeu direito. Tenta de novo.';
