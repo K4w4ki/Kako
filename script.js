@@ -104,6 +104,14 @@ const S = {
   busy: false, revealing: false, skip: false, abort: null,
   image: null, lastImage: null, panel: 'profile', q: '', tmpAvatar: ''
 };
+const MOODS = { idle: 'Online', think: 'Pensando…', happy: 'Animado', oops: 'Deu ruim' };
+let moodT;
+function setMood(m, ms = 0) {
+  const a = $('.app'); if (!a) return;
+  a.dataset.mood = m;
+  const t = $('#mood-label'); if (t) t.textContent = MOODS[m];
+  clearTimeout(moodT); if (ms) moodT = setTimeout(() => setMood('idle'), ms);
+}
 const active = () => S.chats.find((c) => c.id === S.activeId);
 
 function load() {
@@ -243,23 +251,26 @@ function shell() {
   <div class="scrim" data-act="toggle-nav"></div>
   <aside class="side" aria-label="Conversas">
     <div class="brand"><img src="${AVATAR}" alt=""><div><b>Kako</b><small>assistente da Kakos</small></div></div>
-    <button class="btn primary wide" data-act="new-chat"><i class="fa-solid fa-plus"></i> Nova conversa</button>
-    <label class="search"><i class="fa-solid fa-magnifying-glass"></i><input id="search" type="search" placeholder="Buscar conversas" autocomplete="off" aria-label="Buscar conversas"></label>
+    <button class="btn primary wide new" data-act="new-chat"><span><i class="fa-solid fa-plus"></i> Nova conversa</span><kbd>Ctrl ⇧ O</kbd></button>
+    <label class="search"><i class="fa-solid fa-magnifying-glass"></i><input id="search" type="search" placeholder="Buscar conversas" autocomplete="off" aria-label="Buscar conversas"><kbd class="hint-k">Ctrl K</kbd></label>
     <nav id="chat-list" class="chat-list"></nav>
     <div class="me">
-      <div class="av" id="me-av"></div><div class="me-name" id="me-name"></div>
-      <button class="icon" data-act="open-settings" aria-label="Configurações"><i class="fa-solid fa-gear"></i></button>
+      <div class="av" id="me-av"></div><div class="me-info"><div class="me-name" id="me-name"></div><small id="me-sub"></small></div>
+      <button class="icon" data-act="toggle-theme" aria-label="Alternar tema" title="Alternar tema"><i class="fa-solid fa-circle-half-stroke"></i></button>
+      <button class="icon" data-act="open-settings" aria-label="Configurações" title="Configurações"><i class="fa-solid fa-gear"></i></button>
     </div>
   </aside>
   <main class="main" id="main">
     <header class="top">
       <button class="icon only-mobile" data-act="toggle-nav" aria-label="Abrir menu"><i class="fa-solid fa-bars"></i></button>
       <img class="top-av" src="${AVATAR}" alt="">
-      <div class="top-info"><h1 id="top-title">Kako</h1><p><span class="dot"></span>Online</p></div>
+      <div class="top-info"><h1 id="top-title">Kako</h1><p><span class="dot"></span><span id="mood-label">Online</span></p></div>
       <span class="top-tag"><i class="fa-solid fa-bolt"></i> LLaMA 3.3</span>
+      <button class="icon" data-act="toggle-focus" aria-label="Modo foco" title="Modo foco (Ctrl+Shift+F)"><i class="fa-solid fa-expand"></i></button>
       <button class="icon" data-act="export-chat" aria-label="Exportar conversa" title="Exportar conversa"><i class="fa-solid fa-download"></i></button>
       <button class="icon" data-act="clear" aria-label="Limpar conversa" title="Limpar conversa"><i class="fa-regular fa-trash-can"></i></button>
     </header>
+    <button class="focus-exit" data-act="toggle-focus"><i class="fa-solid fa-compress"></i> Sair do modo foco <kbd>Esc</kbd></button>
     <div class="scroller" id="scroller"><div class="thread" id="thread" aria-live="polite"></div></div>
     <button class="to-bottom" id="to-bottom" data-act="to-bottom" aria-label="Ir para o fim" hidden><i class="fa-solid fa-arrow-down"></i></button>
     <footer class="composer">
@@ -358,15 +369,21 @@ function renderMessages() {
 function renderChatList() {
   const el = $('#chat-list'); if (!el) return;
   const q = ($('#search')?.value || '').toLowerCase().trim();
-  const list = S.chats.filter((c) => c.messages.length && (!q || c.title.toLowerCase().includes(q))).sort((a, b) => b.updated - a.updated);
-  if (!list.length) { el.innerHTML = `<p class="empty">${q ? 'Nada encontrado.' : 'Suas conversas aparecem aqui.'}</p>`; return; }
+  const real = S.chats.filter((c) => c.messages.length);
+  const sub = $('#me-sub'); if (sub) sub.textContent = `${real.length} conversa${real.length === 1 ? '' : 's'}`;
+  const list = real.filter((c) => !q || c.title.toLowerCase().includes(q)).sort((a, b) => (!!b.pinned - !!a.pinned) || b.updated - a.updated);
+  if (!list.length) {
+    el.innerHTML = `<div class="side-empty"><i class="fa-regular fa-comments"></i><b>${q ? 'Nada encontrado' : 'Nenhuma conversa ainda'}</b><span>${q ? 'Tente outra palavra.' : 'Mande a primeira mensagem e ela aparece aqui.'}</span></div>`;
+    return;
+  }
   const day = 864e5, today = new Date().setHours(0, 0, 0, 0);
-  const label = (t) => (t >= today ? 'Hoje' : t >= today - day ? 'Ontem' : t >= today - 7 * day ? 'Últimos 7 dias' : 'Mais antigas');
+  const label = (c) => (c.pinned ? 'Fixadas' : c.updated >= today ? 'Hoje' : c.updated >= today - day ? 'Ontem' : c.updated >= today - 7 * day ? 'Últimos 7 dias' : 'Mais antigas');
+  const rel = (t) => (t >= today ? fmtTime(t) : new Date(t).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', ''));
   let last = '', html = '';
   for (const c of list) {
-    const l = label(c.updated);
+    const l = label(c);
     if (l !== last) { html += `<div class="glabel">${l}</div>`; last = l; }
-    html += `<div class="ci ${c.id === S.activeId ? 'on' : ''}"><button class="open" data-act="open-chat" data-id="${c.id}" title="${esc(c.title)}">${esc(c.title)}</button><button class="icon x" data-act="del-chat" data-id="${c.id}" aria-label="Excluir conversa"><i class="fa-regular fa-trash-can"></i></button></div>`;
+    html += `<div class="ci ${c.id === S.activeId ? 'on' : ''} ${c.pinned ? 'pinned' : ''}"><button class="open" data-act="open-chat" data-id="${c.id}" title="${esc(c.title)}"><i class="fa-${c.pinned ? 'solid fa-thumbtack' : 'regular fa-message'}"></i><span class="ci-t"><b>${esc(c.title)}</b><small>${c.messages.length} msg · ${rel(c.updated)}</small></span></button><button class="icon x pin" data-act="pin-chat" data-id="${c.id}" aria-label="${c.pinned ? 'Desafixar' : 'Fixar'} conversa"><i class="fa-solid fa-thumbtack"></i></button><button class="icon x" data-act="del-chat" data-id="${c.id}" aria-label="Excluir conversa"><i class="fa-regular fa-trash-can"></i></button></div>`;
   }
   el.innerHTML = html;
 }
@@ -424,7 +441,7 @@ async function reply(image) {
   const chat = active();
   S.lastImage = image || null;
   $('#thread .msg.err')?.remove();
-  setBusy(true); showTyping(true);
+  setBusy(true); showTyping(true); setMood('think');
   const ctrl = new AbortController(); S.abort = ctrl;
   let timedOut = false;
   const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, 40000);
@@ -449,9 +466,10 @@ async function reply(image) {
     node.classList.add('revealing'); markLast(); renderChatList();
     await reveal(m, node);
     node.classList.remove('revealing');
+    setMood(/(k{3,}|haha|rs{2,}|😂|😄|😁|🎉|daora|show de bola|boa!)/i.test(m.content) ? 'happy' : 'idle', 4500);
     blip(); notifyReply(m);
   } catch (e) {
-    showTyping(false);
+    showTyping(false); setMood(e.name === 'AbortError' ? 'idle' : 'oops', 5000);
     const msg = e.name === 'AbortError' ? (timedOut ? 'A resposta demorou demais.' : 'Resposta cancelada.') : (e.message || 'Algo deu errado.');
     $('#thread').insertAdjacentHTML('beforeend', `<article class="msg ai err"><img src="${AVATAR}" alt=""><div class="col"><div class="msg-body">${esc(msg)}</div><div class="btn-row" style="margin-top:8px"><button class="btn" data-act="retry"><i class="fa-solid fa-rotate"></i> Tentar de novo</button></div></div></article>`);
     scrollDown(true);
@@ -594,6 +612,7 @@ const VIEWS = {
       rowc('Buscar conversas', 'Foca na busca da barra lateral', k('Ctrl', 'K')) +
       rowc('Nova conversa', 'Cria e abre uma conversa em branco', k('Ctrl', 'Shift', 'O')) +
       rowc('Abrir configurações', 'Em qualquer tela', k('Ctrl', ',')) +
+      rowc('Modo foco', 'Esconde o menu e destaca a conversa', k('Ctrl', 'Shift', 'F')) +
       rowc('Fechar painéis', 'Menu lateral e janelas', k('Esc')));
   },
   about: () => `
@@ -650,6 +669,12 @@ function exportText(chat) {
 }
 
 const ACTIONS = {
+  'pin-chat': (el) => { const c = S.chats.find((x) => x.id === el.dataset.id); if (c) { c.pinned = !c.pinned; saveChats(); renderChatList(); } },
+  'toggle-theme': () => setSetting('theme', document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'),
+  'toggle-focus': () => {
+    const on = document.body.classList.toggle('focus'); document.body.classList.remove('nav-open');
+    if (on) toast('Modo foco ligado. Esc para sair.', 'info'); $('#input')?.focus();
+  },
   quick: (el) => { const i = $('#input'); i.value = el.dataset.p; autosize(); i.focus(); i.setSelectionRange(i.value.length, i.value.length); },
   'to-bottom': () => scrollDown(true),
   'toggle-nav': () => document.body.classList.toggle('nav-open'),
@@ -787,7 +812,8 @@ document.addEventListener('keydown', (e) => {
   if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); $('#search')?.focus(); }
   if (mod && e.shiftKey && e.key.toLowerCase() === 'o' && $('#thread')) { e.preventDefault(); newChat(); }
   if (mod && e.key === ',' && $('#thread')) { e.preventDefault(); ACTIONS['open-settings'](); }
-  if (e.key === 'Escape') document.body.classList.remove('nav-open');
+  if (mod && e.shiftKey && e.key.toLowerCase() === 'f' && $('#thread')) { e.preventDefault(); ACTIONS['toggle-focus'](); }
+  if (e.key === 'Escape') { document.body.classList.remove('nav-open'); if (document.body.classList.contains('focus') && !$('dialog[open]')) document.body.classList.remove('focus'); }
 });
 document.addEventListener('scroll', (e) => {
   if (e.target.id !== 'scroller') return;
