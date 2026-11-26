@@ -173,38 +173,51 @@ export default async function handler(req, res) {
     temperature: prefs.creativity === null ? gen.temperature ?? 0.7 : +(0.2 + prefs.creativity * 0.9).toFixed(2),
     top_p: gen.top_p ?? 0.9
   };
-  if (image) payload.model = MODEL_VISION;
-  else payload.models = [MODEL_TEXT, MODEL_FALLBACK];
+  const models = image ? [MODEL_VISION] : [...new Set([MODEL_TEXT, MODEL_FALLBACK, 'meta-llama/llama-3.1-70b-instruct'])];
+  const WHY = {
+    401: 'A chave da OpenRouter é inválida ou foi revogada. Confira OPENROUTER_API_KEY na Vercel.',
+    402: 'A conta da OpenRouter está sem créditos.',
+    403: 'A OpenRouter bloqueou esta requisição (chave sem permissão ou conteúdo moderado).',
+    404: 'O modelo configurado não está disponível na OpenRouter.',
+    429: 'O provedor de IA está sobrecarregado. Tenta de novo em instantes.'
+  };
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), LIMITS.upstreamMs);
+  let fail = { status: 502, detail: '' };
 
   try {
-    const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      signal: ctrl.signal,
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://kako-kakos.vercel.app/',
-        'X-Title': 'Kako Chat'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (!upstream.ok) {
-      console.error('OpenRouter', upstream.status, (await upstream.text()).slice(0, 500));
-      const status = upstream.status === 429 ? 429 : 502;
-      return res.status(status).json({
-        error: status === 429 ? 'O provedor de IA está sobrecarregado. Tenta de novo em instantes.' : 'O provedor de IA não respondeu direito. Tenta de novo.'
+    for (const model of models) {
+      const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        signal: ctrl.signal,
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://kako-kakos.vercel.app/',
+          'X-Title': 'Kako Chat'
+        },
+        body: JSON.stringify({ ...payload, model })
       });
+
+      if (upstream.ok) {
+        const data = await upstream.json().catch(() => ({}));
+        const reply = data.choices?.[0]?.message?.content?.trim();
+        if (reply) return res.status(200).json({ v: 2, reply, sessionId, model: data.model || model });
+        fail = { status: 502, detail: 'resposta vazia' };
+        continue; // tenta o próximo modelo
+      }
+
+      const raw = await upstream.text();
+      let detail = '';
+      try { const j = JSON.parse(raw); detail = String(j.error?.message || j.error || '').slice(0, 140); } catch { detail = raw.slice(0, 140); }
+      console.error('OpenRouter', model, upstream.status, raw.slice(0, 500));
+      fail = { status: upstream.status, detail };
+      if ([401, 402, 403].includes(upstream.status)) break; // trocar de modelo não resolve
     }
 
-    const data = await upstream.json();
-    const reply = data.choices?.[0]?.message?.content?.trim();
-    if (!reply) return res.status(502).json({ error: 'A IA devolveu uma resposta vazia. Tenta reformular.' });
-
-    return res.status(200).json({ v: 2, reply, sessionId, model: data.model });
+    const base = WHY[fail.status] || 'O provedor de IA não respondeu direito. Tenta de novo.';
+    return res.status(fail.status === 429 ? 429 : 502).json({ error: fail.detail && fail.status !== 429 ? `${base} (${fail.detail})` : base });
   } catch (err) {
     const timedOut = err?.name === 'AbortError';
     console.error('Erro no handler:', err);

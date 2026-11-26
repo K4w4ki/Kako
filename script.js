@@ -28,6 +28,13 @@ const PROMPTS = [
   { i: 'fa-utensils', t: 'Receita fácil', p: 'Cria uma receita fácil com ovo' },
   { i: 'fa-graduation-cap', t: 'Estudar melhor', p: 'Me dá dicas para estudar melhor' }
 ];
+const QUICK = [
+  { i: 'fa-align-left', t: 'Resumir', p: 'Resuma o texto a seguir em tópicos curtos:\n\n' },
+  { i: 'fa-language', t: 'Traduzir', p: 'Traduza para o inglês:\n\n' },
+  { i: 'fa-code', t: 'Código', p: 'Escreva um código em JavaScript que ' },
+  { i: 'fa-lightbulb', t: 'Ideias', p: 'Me dê 5 ideias criativas de ' },
+  { i: 'fa-spell-check', t: 'Revisar', p: 'Revise e melhore este texto, mantendo o sentido:\n\n' }
+];
 const NAV = [
   { sec: 'Conta', items: [{ id: 'profile', icon: 'fa-user', title: 'Perfil' }] },
   { sec: 'Preferências', items: [
@@ -235,7 +242,7 @@ function shell() {
 <div class="app">
   <div class="scrim" data-act="toggle-nav"></div>
   <aside class="side" aria-label="Conversas">
-    <div class="brand"><img src="${AVATAR}" alt=""><b>Kako</b></div>
+    <div class="brand"><img src="${AVATAR}" alt=""><div><b>Kako</b><small>assistente da Kakos</small></div></div>
     <button class="btn primary wide" data-act="new-chat"><i class="fa-solid fa-plus"></i> Nova conversa</button>
     <label class="search"><i class="fa-solid fa-magnifying-glass"></i><input id="search" type="search" placeholder="Buscar conversas" autocomplete="off" aria-label="Buscar conversas"></label>
     <nav id="chat-list" class="chat-list"></nav>
@@ -249,11 +256,14 @@ function shell() {
       <button class="icon only-mobile" data-act="toggle-nav" aria-label="Abrir menu"><i class="fa-solid fa-bars"></i></button>
       <img class="top-av" src="${AVATAR}" alt="">
       <div class="top-info"><h1 id="top-title">Kako</h1><p><span class="dot"></span>Online</p></div>
+      <span class="top-tag"><i class="fa-solid fa-bolt"></i> LLaMA 3.3</span>
       <button class="icon" data-act="export-chat" aria-label="Exportar conversa" title="Exportar conversa"><i class="fa-solid fa-download"></i></button>
       <button class="icon" data-act="clear" aria-label="Limpar conversa" title="Limpar conversa"><i class="fa-regular fa-trash-can"></i></button>
     </header>
     <div class="scroller" id="scroller"><div class="thread" id="thread" aria-live="polite"></div></div>
+    <button class="to-bottom" id="to-bottom" data-act="to-bottom" aria-label="Ir para o fim" hidden><i class="fa-solid fa-arrow-down"></i></button>
     <footer class="composer">
+      <div class="quick" id="quick">${QUICK.map((q) => `<button type="button" data-act="quick" data-p="${esc(q.p)}"><i class="fa-solid ${q.i}"></i>${q.t}</button>`).join('')}</div>
       <div class="box" id="box">
         <div class="chip" id="chip" hidden></div>
         <button class="icon" data-act="attach" aria-label="Anexar imagem" title="Anexar imagem"><i class="fa-regular fa-image"></i></button>
@@ -282,7 +292,7 @@ function shell() {
 function renderSetup() {
   $('#app').innerHTML = `
 <div class="setup">
-  <div class="setup-art"><img src="${AVATAR}" alt="Kako"></div>
+  <div class="setup-art"><img src="${AVATAR}" alt="Kako"><div class="say">E aí, beleza? Sou o Kako!</div></div>
   <form class="setup-card" id="setup-form" novalidate>
     <h1>Kako</h1>
     <p class="lead">Seu parceiro de conversa com IA. Só preciso saber como te chamar.</p>
@@ -290,6 +300,7 @@ function renderSetup() {
     <div class="field"><span>Foto de perfil (opcional)</span>
       <div class="setup-av"><div class="av lg" id="setup-av">${avatarHtml('', '?')}</div><button class="btn" type="button" data-act="setup-pick">Escolher foto</button></div></div>
     <button class="btn primary wide" type="submit">Começar a conversar</button>
+    <ul class="feats"><li><i class="fa-regular fa-image"></i>Entende imagens e textos</li><li><i class="fa-solid fa-bolt"></i>Respostas diretas, sem enrolação</li><li><i class="fa-solid fa-lock"></i>Conversas salvas só no seu navegador</li></ul>
   </form>
 </div>
 <input type="file" id="file-setup" accept="image/*" hidden>
@@ -299,9 +310,15 @@ function renderSetup() {
 
 function welcomeHtml() {
   return `<section class="welcome">
-  <div class="hero"><img src="${AVATAR}" alt="Kako"><div class="saw"></div></div>
-  <h2>${greet()}, ${esc(S.user.name)}.</h2>
-  <p>Manda a dúvida, cola um texto ou anexa uma imagem. Eu dou um jeito.</p>
+  <div class="stage">
+    <div class="stage-copy">
+      <span class="tag"><i class="fa-solid fa-bolt"></i>${greet()}</span>
+      <h2>E aí, ${esc(S.user.name)}.<br>Bora resolver o quê?</h2>
+      <p>Manda a dúvida, cola um texto ou anexa uma imagem. Eu dou um jeito.</p>
+    </div>
+    <div class="stage-art"><img src="${AVATAR}" alt="Kako"><div class="say">Manda ver!</div></div>
+    <div class="saw"></div>
+  </div>
   <div class="prompts">${PROMPTS.map((p) => `<button class="prompt" data-act="prompt" data-p="${esc(p.p)}"><i class="fa-solid ${p.i}"></i><b>${p.t}</b><small>${esc(p.p)}</small></button>`).join('')}</div>
 </section>`;
 }
@@ -360,7 +377,7 @@ function scrollDown(force) {
 function showTyping(on) {
   $('#typing')?.remove();
   if (!on) return;
-  $('#thread').insertAdjacentHTML('beforeend', `<article class="msg ai" id="typing" aria-label="Kako está digitando"><img src="${AVATAR}" alt=""><div class="col"><div class="dots"><i></i><i></i><i></i></div></div></article>`);
+  $('#thread').insertAdjacentHTML('beforeend', `<article class="msg ai" id="typing" aria-label="Kako está digitando"><img src="${AVATAR}" alt=""><div class="col"><div class="dots"><i></i><i></i><i></i><span class="think">pensando…</span></div></div></article>`);
   scrollDown(true);
 }
 function setBusy(b) {
@@ -633,6 +650,8 @@ function exportText(chat) {
 }
 
 const ACTIONS = {
+  quick: (el) => { const i = $('#input'); i.value = el.dataset.p; autosize(); i.focus(); i.setSelectionRange(i.value.length, i.value.length); },
+  'to-bottom': () => scrollDown(true),
   'toggle-nav': () => document.body.classList.toggle('nav-open'),
   'new-chat': () => { document.body.classList.remove('nav-open'); newChat(); },
   'open-chat': (el) => { S.activeId = el.dataset.id; rawSet('kako2_active', S.activeId); document.body.classList.remove('nav-open'); renderAll(); },
@@ -770,6 +789,11 @@ document.addEventListener('keydown', (e) => {
   if (mod && e.key === ',' && $('#thread')) { e.preventDefault(); ACTIONS['open-settings'](); }
   if (e.key === 'Escape') document.body.classList.remove('nav-open');
 });
+document.addEventListener('scroll', (e) => {
+  if (e.target.id !== 'scroller') return;
+  const s = e.target, b = $('#to-bottom');
+  if (b) b.hidden = s.scrollHeight - s.scrollTop - s.clientHeight < 240;
+}, true);
 document.addEventListener('paste', (e) => {
   if (e.target.id !== 'input') return;
   const f = [...(e.clipboardData?.files || [])].find((x) => x.type.startsWith('image/'));
